@@ -365,8 +365,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1663
   enablePrimaryFire: 1
-  primarySpawnCameraOffset: 1
-  primaryForwardForce: 100
+  primarySpawnCameraOffset: 0
+  primaryForwardForce: 70
   primaryUpForce: 0
   primaryFireCooldown: 0.5
 --- !u!1 &7703793501684507398

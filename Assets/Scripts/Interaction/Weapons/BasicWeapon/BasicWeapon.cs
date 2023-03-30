@@ -122,7 +122,7 @@ public class BasicWeapon : Weapon
 
     private void PrimaryFireLocal(Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
     {
-        if (IsServer) return;
+        //if (IsServer) return;
         GameObject instance = Instantiate(projectile_Local, spawn, orientation);
         Rigidbody instantceRb = instance.GetComponent<Rigidbody>();
         instantceRb.AddForce(force, ForceMode.Impulse);
@@ -133,7 +133,7 @@ public class BasicWeapon : Weapon
     [ClientRpc]
     private void DisableNetworkProjectileClientRPC(ulong clientId, ulong netObjectId)
     {
-        if(IsOwner && !IsServer && OwnerClientId == clientId)
+        if(IsOwner && OwnerClientId == clientId)
         {
             NetworkObject netObject = GetNetworkObject(netObjectId);
             foreach (Transform child in netObject.transform)
