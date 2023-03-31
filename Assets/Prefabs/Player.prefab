@@ -77,7 +77,7 @@ MonoBehaviour:
   crouchYScale: 0.5
   crouchToggle: 1
   maxSlopeAngle: 45
-  slopeDownForce: 8
+  slopeDownForce: 20
   enableWallRun: 0
   wallRunSpeed: 10
   maxWallRunTime: 0
@@ -131,6 +131,7 @@ MonoBehaviour:
   bind_tertiaryFire: 325
   bind_reload: 114
   bind_swapWeapon: 113
+  bind_kill: 8
 --- !u!114 &8115679024178126358
 MonoBehaviour:
   m_ObjectHideFlags: 0

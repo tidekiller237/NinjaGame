@@ -229,10 +229,6 @@ public class PlayerController : NetworkBehaviour
 
         //ground check
         grounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.2f, groundMask);
-        bool slopeCheck = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.5f, groundMask);
-
-        if (slopeCheck && !grounded)
-            rb.AddForce(Vector3.down * 50f, ForceMode.Impulse);
 
         //detection
         WallCheck();
@@ -470,8 +466,9 @@ public class PlayerController : NetworkBehaviour
         {
             rb.AddForce(GetDirectionOnSlope(moveDirection.normalized) * moveSpeed * 20f, ForceMode.Force);
 
-            if (rb.velocity.y > 0)
-                rb.AddForce(Vector3.down * slopeDownForce * 10f, ForceMode.Force);
+            //if (rb.velocity.y > 0)
+            //    rb.AddForce(Vector3.down * slopeDownForce * 10f, ForceMode.Force);
+            rb.AddForce(slopeHit.normal * -slopeDownForce * 10f, ForceMode.Force);
         }
         else if (wallRunning && !exitJump)
         {
@@ -719,9 +716,9 @@ public class PlayerController : NetworkBehaviour
         wallFront = Physics.SphereCast(transform.position, sphereCastRadius, transform.forward, out frontWallHit, detectionLength, groundMask);
         wallLookAngle = Vector3.Angle(transform.forward, -frontWallHit.normal);
 
-        bool newWall = frontWallHit.transform != lastWall || Mathf.Abs(Vector3.Angle(lastWallNormal, frontWallHit.normal)) > minWallNormalAngleChange;
+        //bool newWall = frontWallHit.transform != lastWall || Mathf.Abs(Vector3.Angle(lastWallNormal, frontWallHit.normal)) > minWallNormalAngleChange;
 
-        if((wallFront && newWall) || grounded || ledgeGrabbed)
+        if(grounded || ledgeGrabbed)
         {
             climbingTime = maxClimbingTime;
             climbJumpsLeft = climbJumps;
