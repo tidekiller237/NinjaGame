@@ -87,7 +87,7 @@ MonoBehaviour:
       m_Calls: []
   hitLayer:
     serializedVersion: 2
-    m_Bits: 1663
+    m_Bits: 639
 --- !u!114 &5047307781477900831
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -101,6 +101,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   lifeTime: 5
+  weapon: {fileID: 0}
 --- !u!114 &5205347180763557252
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -115,6 +116,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   visualComponent: {fileID: 1693399001836735384}
   visualSpeed: 1
+  netId: 0
 --- !u!114 &5047307781477900826
 MonoBehaviour:
   m_ObjectHideFlags: 0

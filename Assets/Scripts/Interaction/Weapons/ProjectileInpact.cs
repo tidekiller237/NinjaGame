@@ -8,6 +8,8 @@ public class ProjectileInpact : MonoBehaviour
     public UnityEvent<GameObject, Collider> OnImpact;
     public LayerMask hitLayer;
 
+    //GameObject[] debugSpheres = new GameObject[2];
+
     Rigidbody rb;
     Vector3 lastPos;
 
@@ -17,6 +19,7 @@ public class ProjectileInpact : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         lastPos = transform.position;
+
     }
 
     private void Update()
@@ -29,11 +32,15 @@ public class ProjectileInpact : MonoBehaviour
         if (targetHit) return;
 
         RaycastHit hit;
-        Physics.CapsuleCast(lastPos, transform.position, GetComponent<CapsuleCollider>().radius, (transform.position - lastPos).normalized, out hit, (transform.position - lastPos).magnitude, hitLayer);
+        Physics.CapsuleCast(lastPos + (rb.velocity.normalized * GetComponent<CapsuleCollider>().height / 2),
+            transform.position - (rb.velocity.normalized * GetComponent<CapsuleCollider>().height / 2), 
+            GetComponent<CapsuleCollider>().radius, (transform.position - lastPos).normalized, out hit, (transform.position - lastPos).magnitude, hitLayer);
 
         lastPos = transform.position;
 
-        if (hit.collider == null) return;
+        //return if hit nothing or if hit a dead player
+        if (hit.collider == null ||
+            (hit.collider.CompareTag("Player") && !hit.collider.GetComponent<HealthManager>().IsAlive)) return;
 
         targetHit = true;
         rb.velocity = Vector3.zero;

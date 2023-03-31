@@ -10,6 +10,7 @@ public class PlayerController : NetworkBehaviour
 
     Rigidbody rb;
 
+    public bool control;
     public bool restrictMovement;
 
     public GameObject visor;
@@ -154,6 +155,7 @@ public class PlayerController : NetworkBehaviour
     public KeyCode bind_tertiaryFire = KeyCode.Mouse2;
     public KeyCode bind_reload = KeyCode.R;
     public KeyCode bind_swapWeapon = KeyCode.Q;
+    public KeyCode bind_kill = KeyCode.Backspace;
 
     public enum MovementState
     {
@@ -183,6 +185,7 @@ public class PlayerController : NetworkBehaviour
         else
             Destroy(gameObject);
 
+        control = true;
         mainCamera = Camera.main.GetComponent<CameraController>();
         weapon1 = weaponHolder.GetComponent<Weapon>();
         rb = GetComponent<Rigidbody>();
@@ -193,6 +196,9 @@ public class PlayerController : NetworkBehaviour
         exitingWall = false;
         gravityEnabled = true;
         InitializeAbilities();
+
+        //TODO: spawn at random for now
+        GetComponent<SpawnHandler>().SpawnAtRandom();
     }
 
     private void InitializeAbilities()
@@ -216,7 +222,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner) return;
+        if (!IsOwner || !control) return;
 
         bool lastGrounded = grounded;
         Vector3 lastVelocity = new(rb.velocity.x, 0f, rb.velocity.z);
@@ -271,6 +277,9 @@ public class PlayerController : NetworkBehaviour
 
     private void GetInput()
     {
+        if (Input.GetKeyDown(bind_kill))
+            GetComponent<HealthManager>().Damage(1000);
+
         horizontalInput = Input.GetAxisRaw("Horizontal");
         verticalInput = Input.GetAxisRaw("Vertical");
 

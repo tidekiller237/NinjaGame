@@ -8,6 +8,7 @@ public class ProjectileBalistics : MonoBehaviour
 
     public Transform visualComponent;
     public float visualSpeed;
+    public ulong netId;
 
     Vector3 startPos;
     Vector3 currentPos;

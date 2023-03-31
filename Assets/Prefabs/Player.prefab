@@ -10,8 +10,10 @@ GameObject:
   m_Component:
   - component: {fileID: 7703793501684507413}
   - component: {fileID: 7703793501684507613}
-  - component: {fileID: 7703793501684507434}
+  - component: {fileID: 8115679024178126358}
+  - component: {fileID: 5914511214343397922}
   - component: {fileID: 7703793501684507429}
+  - component: {fileID: 7703793501684507434}
   - component: {fileID: 7703793501684507612}
   - component: {fileID: 6482261138897176078}
   - component: {fileID: 3042352746650602914}
@@ -52,6 +54,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 302968eddd2b08c419930a7a2f45f18a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  control: 0
   restrictMovement: 0
   visor: {fileID: 7703793501684507394}
   mainCamera: {fileID: 0}
@@ -73,7 +76,7 @@ MonoBehaviour:
   crouchSpeed: 5
   crouchYScale: 0.5
   crouchToggle: 1
-  maxSlopeAngle: 40
+  maxSlopeAngle: 45
   slopeDownForce: 8
   enableWallRun: 0
   wallRunSpeed: 10
@@ -128,6 +131,58 @@ MonoBehaviour:
   bind_tertiaryFire: 325
   bind_reload: 114
   bind_swapWeapon: 113
+--- !u!114 &8115679024178126358
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7703793501684507393}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 960cd97a8cc0c364797b400eaa904920, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 200
+  timeToRespawn: 5
+  respawning: 0
+  currentHealth:
+    m_InternalValue: 0
+  OnDamageTaken:
+    m_PersistentCalls:
+      m_Calls: []
+  OnHealthGained:
+    m_PersistentCalls:
+      m_Calls: []
+  OnHealthChanged:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &5914511214343397922
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7703793501684507393}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ea20ad45610d9240b9f86af76a18661, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!136 &7703793501684507429
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7703793501684507393}
+  m_Material: {fileID: 13400000, guid: 46fbd85cb11054642a0d57985488f873, type: 2}
+  m_IsTrigger: 0
+  m_Enabled: 1
+  m_Radius: 0.5
+  m_Height: 2
+  m_Direction: 1
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!54 &7703793501684507434
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -144,20 +199,6 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 2
---- !u!136 &7703793501684507429
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7703793501684507393}
-  m_Material: {fileID: 13400000, guid: 46fbd85cb11054642a0d57985488f873, type: 2}
-  m_IsTrigger: 0
-  m_Enabled: 1
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &7703793501684507612
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -365,6 +406,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1663
   enablePrimaryFire: 1
+  primaryDamage: 50
   primarySpawnCameraOffset: 0
   primaryForwardForce: 70
   primaryUpForce: 0

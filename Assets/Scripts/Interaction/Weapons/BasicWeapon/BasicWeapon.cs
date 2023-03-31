@@ -13,6 +13,7 @@ public class BasicWeapon : Weapon
 
     [Header("Primary Fire")]
     public bool enablePrimaryFire;
+    public int primaryDamage;
     public float primarySpawnCameraOffset;
     public float primaryForwardForce;
     public float primaryUpForce;
@@ -38,16 +39,39 @@ public class BasicWeapon : Weapon
 
         base.Update();
 
-        //handle inputs
-        GetInputs();
+        if (PlayerController.instance.control)
+        {
+            //handle inputs
+            GetInputs();
+        }
+        else
+        {
+            DestroyAllProjectiles();
+        }
     }
 
     private void GetInputs()
     {
-        if(canPrimaryFire && Input.GetKey(primaryInput))
+        if(enablePrimaryFire && canPrimaryFire && Input.GetKey(primaryInput))
         {
             PrimaryFire();
         }
+    }
+
+    private void DestroyAllProjectiles()
+    {
+        if (projDict.Count == 0) return;
+
+        foreach (var obj in projDict)
+        {
+            if (obj.Value != null)
+            {
+                DestroyProjectileServerRPC(obj.Value.GetComponent<ProjectileBalistics>().netId);
+                DestroyLocalProjectile(obj.Value);
+            }
+        }
+
+        projDict.Clear();
     }
 
     private void PrimaryFire()
@@ -58,8 +82,9 @@ public class BasicWeapon : Weapon
         Vector3 dir = cam.transform.forward;
         Vector3 force = dir * primaryForwardForce + transform.up * primaryUpForce;
 
-        PrimaryFireServerRPC(OwnerClientId, spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
-        PrimaryFireLocal(spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
+        GameObject instance = PrimaryFireLocal(spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
+        projDict.Add(instance.GetInstanceID(), instance);
+        PrimaryFireServerRPC(OwnerClientId, instance.GetInstanceID(), spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
 
         Invoke(nameof(ResetPrimaryFire), primaryFireCooldown);
     }
@@ -71,67 +96,63 @@ public class BasicWeapon : Weapon
 
     public void PrimaryOnImpact(GameObject context, Collider collider)
     {
-        if (context.GetComponent<NetworkObject>() != null && IsServer)
+        if (collider.CompareTag("Player") && collider.GetComponent<HealthManager>().IsAlive)
         {
-            if (collider.CompareTag("Player"))
-            {
-                if(IsOwner)
-                UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.25f);
-
-                context.GetComponent<NetworkObject>().Despawn();
-            }
-            else
-            {
-                //ContactPoint contactPoint = collision.GetContact(0);
-                //context.transform.position = contactPoint.point;
-                context.GetComponent<Rigidbody>().constraints = RigidbodyConstraints.FreezeAll;
-                context.GetComponent<Collider>().enabled = false;
-            }
+            UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.25f);
+            DestroyProjectileServerRPC(context.GetComponent<ProjectileBalistics>().netId);
+            DestroyLocalProjectile(context);
         }
         else
         {
-            if (collider.CompareTag("Player"))
-            {
-                //damage player
-                UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.25f);
-                Destroy(context);
-            }
-            else
-            {
-                //ContactPoint contactPoint = collision.GetContact(0);
-                //context.transform.position = contactPoint.point;
-                context.GetComponent<Rigidbody>().constraints = RigidbodyConstraints.FreezeAll;
-                context.GetComponent<Collider>().enabled = false;
-            }
+            context.GetComponent<Rigidbody>().constraints = RigidbodyConstraints.FreezeAll;
+            context.GetComponent<Collider>().enabled = false;
         }
+
+        if(collider.GetComponent<NetworkObject>() != null && collider.GetComponent<HealthManager>() != null)
+            DealDamageToTargetServerRPC(OwnerClientId, collider.GetComponent<NetworkObject>().NetworkObjectId, primaryDamage);
     }
 
     #region Network
 
+    private GameObject PrimaryFireLocal(Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
+    {
+        GameObject instance = Instantiate(projectile_Local, spawn, orientation);
+        Rigidbody instantceRb = instance.GetComponent<Rigidbody>();
+        instance.GetComponent<ProjectileBalistics>().SetSpawnPosition(visualSpawn);
+        instance.GetComponent<ProjectileInpact>().OnImpact.AddListener(PrimaryOnImpact);
+        instantceRb.AddForce(force, ForceMode.Impulse);
+        return instance;
+    }
+
     [ServerRpc]
-    private void PrimaryFireServerRPC(ulong clientId, Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
+    private void PrimaryFireServerRPC(ulong clientId, int localId, Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
     {
         GameObject netInstance = Instantiate(projectile_Network, spawn, orientation);
         Rigidbody instantceRb = netInstance.GetComponent<Rigidbody>();
         netInstance.GetComponent<NetworkObject>().Spawn();
         instantceRb.AddForce(force, ForceMode.Impulse);
         netInstance.GetComponent<ProjectileBalistics>().SetSpawnPosition(visualSpawn);
-        DisableNetworkProjectileClientRPC(clientId, netInstance.GetComponent<NetworkObject>().NetworkObjectId);
-        netInstance.GetComponent<ProjectileInpact>().OnImpact.AddListener(PrimaryOnImpact);
+        DisableNetworkProjectileClientRPC(clientId, netInstance.GetComponent<NetworkObject>().NetworkObjectId, localId);
     }
 
-    private void PrimaryFireLocal(Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
+    [ServerRpc]
+    private void DestroyProjectileServerRPC(ulong objectId)
     {
-        //if (IsServer) return;
-        GameObject instance = Instantiate(projectile_Local, spawn, orientation);
-        Rigidbody instantceRb = instance.GetComponent<Rigidbody>();
-        instantceRb.AddForce(force, ForceMode.Impulse);
-        instance.GetComponent<ProjectileBalistics>().SetSpawnPosition(visualSpawn);
-        instance.GetComponent<ProjectileInpact>().OnImpact.AddListener(PrimaryOnImpact);
+        GetNetworkObject(objectId).Despawn();
+    }
+
+    [ServerRpc]
+    private void DealDamageToTargetServerRPC(ulong client, ulong objectId, int damage)
+    {
+        NetworkObject target = GetNetworkObject(objectId);
+        if(target.GetComponent<HealthManager>() != null)
+        {
+            target.GetComponent<HealthManager>().Damage(damage);
+        }
     }
 
     [ClientRpc]
-    private void DisableNetworkProjectileClientRPC(ulong clientId, ulong netObjectId)
+    private void DisableNetworkProjectileClientRPC(ulong clientId, ulong netObjectId, int localId)
     {
         if(IsOwner && OwnerClientId == clientId)
         {
@@ -139,6 +160,11 @@ public class BasicWeapon : Weapon
             foreach (Transform child in netObject.transform)
                 child.gameObject.SetActive(false);
             netObject.GetComponent<Collider>().enabled = false;
+            GameObject localInstance;
+            projDict.TryGetValue(localId, out localInstance);
+
+            if (localInstance == null) return;
+            localInstance.GetComponent<ProjectileBalistics>().netId = netObjectId;
         }
     }
 

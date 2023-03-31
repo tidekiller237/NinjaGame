@@ -6,6 +6,7 @@ using Unity.Netcode;
 public class ProjectileCleanup : NetworkBehaviour
 {
     public float lifeTime;
+    public Weapon weapon;
 
     private void Awake()
     {
@@ -15,13 +16,16 @@ public class ProjectileCleanup : NetworkBehaviour
     private void CleanUp()
     {
         if (!IsOwner) return;
-        CleanUpServerRPC();
+
+        if (GetComponent<NetworkObject>() != null)
+            CleanUpServerRPC();
+        else
+            weapon.DestroyLocalProjectile(gameObject);
     }
 
     [ServerRpc]
     private void CleanUpServerRPC()
     {
         GetComponent<NetworkObject>().Despawn();
-        Destroy(gameObject);
     }
 }

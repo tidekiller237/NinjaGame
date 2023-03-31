@@ -46,6 +46,9 @@ public class CameraController : MonoBehaviour
             transform.rotation = mainMenuTf.rotation;
         } else if (inGame && playerObject != null)
         {
+            //if (playerObject.transform.forward.normalized != Vector3.ProjectOnPlane(transform.parent.forward, Vector3.up).normalized)
+            //    transform.parent.rotation = playerObject.transform.rotation;
+
             transform.parent.position = playerObject.transform.position + (Vector3.up * verticalCameraOffset * playerObject.transform.localScale.y);
             transform.parent.localScale = playerObject.transform.localScale;
             transform.localScale = playerObject.transform.localScale;
