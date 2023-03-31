@@ -229,6 +229,10 @@ public class PlayerController : NetworkBehaviour
 
         //ground check
         grounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.2f, groundMask);
+        bool slopeCheck = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.5f, groundMask);
+
+        if (slopeCheck && !grounded)
+            rb.AddForce(Vector3.down * 50f, ForceMode.Impulse);
 
         //detection
         WallCheck();
