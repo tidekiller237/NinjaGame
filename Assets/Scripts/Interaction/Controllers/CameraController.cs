@@ -24,8 +24,6 @@ public class CameraController : MonoBehaviour
     bool lerpTilt;
     bool inGame;
 
-    Coroutine fovCoro, tiltCoro;
-
     private void Start()
     {
         cam = GetComponent<Camera>();
@@ -46,12 +44,12 @@ public class CameraController : MonoBehaviour
             transform.rotation = mainMenuTf.rotation;
         } else if (inGame && playerObject != null)
         {
-            //if (playerObject.transform.forward.normalized != Vector3.ProjectOnPlane(transform.parent.forward, Vector3.up).normalized)
-            //    transform.parent.rotation = playerObject.transform.rotation;
-
-            transform.parent.position = playerObject.transform.position + (Vector3.up * verticalCameraOffset * playerObject.transform.localScale.y);
-            transform.parent.localScale = playerObject.transform.localScale;
-            transform.localScale = playerObject.transform.localScale;
+            if (playerObject.GetComponent<HealthManager>().IsAlive)
+            {
+                transform.parent.position = playerObject.transform.position + (Vector3.up * verticalCameraOffset * playerObject.transform.localScale.y);
+                transform.parent.localScale = playerObject.transform.localScale;
+                transform.localScale = playerObject.transform.localScale;
+            }
 
             //mouse input
             float mouseX = Input.GetAxisRaw("Mouse X") * sensitivityX;
@@ -77,7 +75,7 @@ public class CameraController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (inGame && playerObject != null)
+        if (inGame && playerObject != null && playerObject.GetComponent<HealthManager>().IsAlive)
             //rotation
             playerObject.transform.localRotation = Quaternion.Euler(0f, yRotation, 0f);
     }

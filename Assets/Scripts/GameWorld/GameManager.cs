@@ -9,6 +9,8 @@ public class GameManager : MonoBehaviour
     public static GameManager instance;
     public SceneState sceneState;
 
+    public GameObject[] enableOnStart;
+
     public enum SceneState
     {
         MainMenu,
@@ -31,6 +33,9 @@ public class GameManager : MonoBehaviour
     private void Start()
     {
         sceneState = SceneState.MainMenu;
+
+        foreach (GameObject obj in enableOnStart)
+            obj.SetActive(true);
 
         #region Initialize Physics
 

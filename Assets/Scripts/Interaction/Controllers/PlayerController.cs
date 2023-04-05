@@ -85,12 +85,15 @@ public class PlayerController : NetworkBehaviour
     public float sphereCastRadius;
     public float maxWallLookAngle;
     public float exitWallCooldown;
+    public float climbExitDetectionLength;
     bool exitingWall;
     float wallLookAngle;
     bool climbing;
+    bool climbStopping;
     RaycastHit frontWallHit;
     bool wallFront;
     float climbingTime;
+    Collider climbLedgeCollider;
 
     [Header("Climb Jump")]
     public bool enableClimbJump;
@@ -98,9 +101,22 @@ public class PlayerController : NetworkBehaviour
     public float climbJumpBackForce;
     public int climbJumps;
     public float minWallNormalAngleChange;
+    public float climbStopDelay;
     int climbJumpsLeft;
     Transform lastWall;
     Vector3 lastWallNormal;
+
+    [Header("Ledge Climb")]
+    public bool enableLedgeClimb;
+    public float ledgeClimbSpeed;
+    public float ledgeClimbCheckOffset;
+    public float ledgeClimbMinDistance;
+    bool ledgeClimbing;
+    RaycastHit ledgeClimbHit;
+    Vector3 ledgeClimbUp;
+    Vector3 ledgeClimbForward;
+    bool ledgeClimbUpCheck;
+    bool ledgeClimbForwardCheck;
 
     [Header("Ledge Grab")]
     public bool enableLedgeGrab;
@@ -165,6 +181,7 @@ public class PlayerController : NetworkBehaviour
         Crouching,
         WallRunning,
         Climbing,
+        LedgeClimbing,
         LedgeHolding,
         Ability,
         Air
@@ -278,7 +295,7 @@ public class PlayerController : NetworkBehaviour
     private void GetInput()
     {
         if (Input.GetKeyDown(bind_kill))
-            GetComponent<HealthManager>().Damage(1000);
+            KillBindServerRpc(OwnerClientId, NetworkObjectId);
 
         horizontalInput = Input.GetAxisRaw("Horizontal");
         verticalInput = Input.GetAxisRaw("Vertical");
@@ -286,14 +303,17 @@ public class PlayerController : NetworkBehaviour
         //jumping
         if(canJump)
         {
-            if (enableJump && Input.GetKeyDown(bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && !climbing && !ledgeGrabbed)
+            if (enableJump && Input.GetKeyDown(bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && (!climbing || climbStopping) && !ledgeGrabbed)
             {
                 canJump = false;
                 Jump();
 
                 Invoke(nameof(ResetJump), jumpCoodown);
+
+                if (climbStopping)
+                    SecondClimbStop();
             } 
-            else if (enableWallRun && Input.GetKeyUp(bind_jump) && wallRunning)
+            else if (enableWallRun && Input.GetKeyDown(bind_jump) && wallRunning)
             {
                 canJump = false;
                 WallJump();
@@ -307,7 +327,7 @@ public class PlayerController : NetworkBehaviour
 
                 Invoke(nameof(ResetJump), jumpCoodown);
             }
-            else if(enableClimbJump && Input.GetKeyUp(bind_jump) && wallFront && climbJumpsLeft > 0 && !exitingWall)
+            else if(enableClimbJump && Input.GetKeyDown(bind_jump) && wallFront && climbJumpsLeft > 0 && !exitingWall)
             {
                 canJump = false;
                 ClimbJump();
@@ -361,14 +381,20 @@ public class PlayerController : NetworkBehaviour
             moveState = MovementState.Unlimited;
             moveSpeed = 1000f;
         }
+        //ledge climbing
+        else if(ledgeClimbing && !exitingWall)
+        {
+            moveState = MovementState.LedgeClimbing;
+            moveSpeed = ledgeClimbSpeed;
+        }
         //climbing
-        else if (climbing && !exitingWall)
+        else if (climbing && !climbStopping && !exitingWall)
         {
             moveState = MovementState.Climbing;
             desiredMoveSpeed = climbSpeed;
         }
         //wall running
-        else if(enableWallRun && (wallLeft || wallRight) && verticalInput > 0 && Input.GetKey(bind_jump) && IsAboveHeight(minJumpHeight) && CheckWallPeel() && !crouching)
+        else if(enableWallRun && (wallLeft || wallRight) && verticalInput > 0 && IsAboveHeight(minJumpHeight) && CheckWallPeel() && !crouching)
         {
             if (!wallRunning)
             {
@@ -402,18 +428,26 @@ public class PlayerController : NetworkBehaviour
             moveState = MovementState.Air;
 
         //climbing
-        if (enableClimbing && wallFront && wallLookAngle < maxWallLookAngle && Input.GetKey(bind_jump) && verticalInput > 0 && !exitingWall)
+        if (enableClimbing && wallFront && wallLookAngle < maxWallLookAngle && verticalInput > 0 && !exitingWall && !climbStopping)
         {
             if (!climbing && climbingTime > 0) StartClimbing();
 
             if (climbingTime > 0) climbingTime -= Time.deltaTime;
             if (climbingTime < 0) StopClimbing();
         }
-        else
+        else if (!climbStopping && climbing)
+        {
             StopClimbing();
+        }
+
+        if (climbing && climbStopping && ClimbStopGroundCheck())
+        {
+            rb.velocity = new(rb.velocity.x, 0f, rb.velocity.z);
+            SecondClimbStop();
+        }
 
         //ledge holding
-        if(enableLedgeGrab && ledgeGrabbed && !exitingWall)
+        if (enableLedgeGrab && ledgeGrabbed && !exitingWall)
         {
             FreezeOnLedge();
             timeOnLedge += Time.deltaTime;
@@ -482,7 +516,7 @@ public class PlayerController : NetworkBehaviour
         else
             rb.AddForce(moveDirection.normalized * moveSpeed * 10f * airMultiplier, ForceMode.Force);
 
-        if (climbing && !exitJump)
+        if (climbing && !climbStopping && !exitJump)
             ClimbMovement();
     }
 
@@ -537,9 +571,12 @@ public class PlayerController : NetworkBehaviour
     private void WallJump()
     {
         exitJump = true;
+        float forwardValue = wallJumpForwardForce;
+        if(Vector3.Dot(mainCamera.transform.forward, (wallRight) ? rightWallHit.normal : leftWallHit.normal) < 0f)
+            forwardValue = 0f;
 
         rb.velocity = new(rb.velocity.x, 0f, rb.velocity.z);
-        Vector3 force = transform.up * wallJumpUpForce + GetWallNormal() * wallJumpAwayForce + mainCamera.transform.forward * wallJumpForwardForce;
+        Vector3 force = transform.up * wallJumpUpForce + GetWallNormal() * wallJumpAwayForce + mainCamera.transform.forward * forwardValue;
         rb.AddForce(force, ForceMode.Impulse);
     }
 
@@ -671,9 +708,9 @@ public class PlayerController : NetworkBehaviour
         wallRight = Physics.Raycast(transform.position, transform.right, out rightWallHit, wallCheckDistance, groundMask);
         wallLeft = Physics.Raycast(transform.position, -transform.right, out leftWallHit, wallCheckDistance, groundMask);
 
-        if (wallRight && Vector3.Dot(rightWallHit.normal, Vector3.up) != 0)
+        if (wallRight && Vector3.Dot(rightWallHit.normal, Vector3.up) > 0.01f)
             wallRight = false;
-        if (wallLeft && Vector3.Dot(leftWallHit.normal, Vector3.up) != 0)
+        if (wallLeft && Vector3.Dot(leftWallHit.normal, Vector3.up) > 0.01f)
             wallLeft = false;
     }
 
@@ -717,8 +754,9 @@ public class PlayerController : NetworkBehaviour
         wallLookAngle = Vector3.Angle(transform.forward, -frontWallHit.normal);
 
         //bool newWall = frontWallHit.transform != lastWall || Mathf.Abs(Vector3.Angle(lastWallNormal, frontWallHit.normal)) > minWallNormalAngleChange;
+        bool newWall = Mathf.Abs(Vector3.Angle(lastWallNormal, frontWallHit.normal)) > minWallNormalAngleChange;
 
-        if(grounded || ledgeGrabbed)
+        if(newWall || grounded || ledgeGrabbed)
         {
             climbingTime = maxClimbingTime;
             climbJumpsLeft = climbJumps;
@@ -735,7 +773,22 @@ public class PlayerController : NetworkBehaviour
 
     private void StopClimbing()
     {
+        climbStopping = true;
+        climbLedgeCollider = frontWallHit.collider;
+        Invoke(nameof(SecondClimbStop), climbStopDelay);
+    }
+
+    private void SecondClimbStop()
+    {
         climbing = false;
+        climbStopping = false;
+    }
+
+    private bool ClimbStopGroundCheck()
+    {
+        RaycastHit hit;
+        Physics.Raycast(transform.position, Vector3.down, out hit, (playerHeight * 0.5f) + climbExitDetectionLength, groundMask);
+        return hit.collider != null && hit.collider == climbLedgeCollider;
     }
 
     private void ClimbMovement()
@@ -760,30 +813,48 @@ public class PlayerController : NetworkBehaviour
 
     private void LedgeDetection()
     {
-        if (exitingWall || wallRunning || !enableLedgeGrab) return;
+        if (exitingWall || !enableLedgeClimb || !climbing) return;
 
-        bool ledgeDetected = Physics.SphereCast(mainCamera.transform.position, ledgeDetectRadius, mainCamera.transform.forward, out ledgeHit, ledgeDetectLength, ledgeMask);
+        //raycast from above and in front of the player
+        Vector3 playerClimbPosition = transform.position + transform.forward * ledgeClimbCheckOffset;
+        Vector3 rayStartPoint = playerClimbPosition + Vector3.up * (playerHeight / 2);
+        bool ledgeDetected = Physics.Raycast(rayStartPoint, Vector3.down, out ledgeClimbHit, Vector3.Distance(rayStartPoint, playerClimbPosition), groundMask);
+        Debug.DrawRay(rayStartPoint, Vector3.down, Color.red, 10f);
+
         if (!ledgeDetected) return;
 
-        RaycastHit losCheck;
-        Physics.Raycast(transform.position, (ledgeHit.point - transform.position).normalized, out losCheck, Vector3.Distance(transform.position, ledgeHit.point));
-        
-        if(losCheck.transform != ledgeHit.transform)
-        {
-            ledgeDetected = false;
-            return;
-        }
+        ledgeClimbUp = Vector3.Project((ledgeClimbHit.point + Vector3.up * playerHeight / 2) - transform.position, Vector3.up) + transform.position;
+        ledgeClimbForward = Vector3.Project(ledgeClimbHit.point - transform.position, transform.forward) + transform.position;
 
-        //float distanceToLedge = Vector3.Distance(transform.position, ledgeHit.transform.position);
-        float distanceToLedge = Vector3.Distance(transform.position, ledgeHit.point);
+        if(!ledgeClimbing)
+            StartLedgeClimb();
 
-        if (ledgeHit.transform == lastLedge) return;
+        //bool ledgeDetected = Physics.SphereCast(mainCamera.transform.position, ledgeDetectRadius, mainCamera.transform.forward, out ledgeHit, ledgeDetectLength, ledgeMask);
+        //if (!ledgeDetected) return;
+        //
+        //RaycastHit losCheck;
+        //Physics.Raycast(transform.position, (ledgeHit.point - transform.position).normalized, out losCheck, Vector3.Distance(transform.position, ledgeHit.point));
+        //
+        //if(losCheck.transform != ledgeHit.transform)
+        //{
+        //    ledgeDetected = false;
+        //    return;
+        //}
+        ////float distanceToLedge = Vector3.Distanzce(transform.position, ledgeHit.transform.position);
+        //float distanceToLedge = Vector3.Distance(transform.position, ledgeHit.point);
+        //
+        //if (ledgeHit.transform == lastLedge) return;
+        //
+        //if (distanceToLedge < maxLedgeGrabDistance && !ledgeGrabbed)
+        //{
+        //    currentHit = ledgeHit;
+        //    EnterLedgeHold();
+        //}
+    }
 
-        if (distanceToLedge < maxLedgeGrabDistance && !ledgeGrabbed)
-        {
-            currentHit = ledgeHit;
-            EnterLedgeHold();
-        }
+    private float GetLedgeHitAngle()
+    {
+        return Vector3.Angle(transform.forward, Vector3.ProjectOnPlane(-frontWallHit.normal, Vector3.up));
     }
 
     private void FreezeOnLedge()
@@ -812,6 +883,56 @@ public class PlayerController : NetworkBehaviour
             Debug.Log("Exiting | Distance: " + dist + " | Ledge: " + currentHit.transform.name);
             ExitLedgeHold();
         }
+    }
+
+    private void StartLedgeClimb()
+    {
+        ledgeClimbing = true;
+        gravityEnabled = false;
+        ledgeClimbForwardCheck = false;
+        ledgeClimbUpCheck = true;
+    }
+
+    private void ClimbLedge()
+    {
+        if (!enableLedgeClimb || !ledgeClimbing || exitingWall) return;
+
+        //up
+        Vector3 dir = ledgeClimbUp - transform.position;
+        float dist = Vector3.Distance(transform.position, ledgeClimbUp);
+
+        if (ledgeClimbUpCheck && dist > ledgeClimbMinDistance)
+        {
+            if (rb.velocity.magnitude < moveToLedgeSpeed)
+                rb.AddForce(dir.normalized * moveToLedgeSpeed * Time.deltaTime, ForceMode.Force);
+            return;
+        }
+        ledgeClimbUpCheck = false;
+
+        rb.velocity = new(rb.velocity.x, 0f, rb.velocity.z);
+
+        //forward
+        dir = ledgeClimbForward - transform.position;
+        dist = Vector3.Distance(transform.position, ledgeClimbForward);
+
+        if(ledgeClimbForwardCheck && dist > ledgeClimbMinDistance)
+        {
+            if (rb.velocity.magnitude < moveToLedgeSpeed)
+                rb.AddForce(dir.normalized * moveToLedgeSpeed * Time.deltaTime, ForceMode.Force);
+            return;
+        }
+        ledgeClimbForwardCheck = false;
+
+        rb.velocity = Vector3.zero;
+
+        //destination reached
+        StopLedgeClimb();
+    }
+
+    private void StopLedgeClimb()
+    {
+        ledgeClimbing = false;
+        gravityEnabled = true;
     }
 
     private void EnterLedgeHold()
@@ -846,6 +967,18 @@ public class PlayerController : NetworkBehaviour
         if (!enableLedgeGrab) return;
 
         lastLedge = null;
+    }
+
+    #endregion
+
+    #region Network
+
+    [ServerRpc]
+    private void KillBindServerRpc(ulong clientId, ulong objectId)
+    {
+        NetworkObject obj = GetNetworkObject(objectId);
+        if (obj != null && obj.OwnerClientId == clientId)
+            obj.GetComponent<HealthManager>().Damage(1000);
     }
 
     #endregion

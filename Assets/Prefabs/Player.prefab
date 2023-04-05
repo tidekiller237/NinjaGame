@@ -78,12 +78,12 @@ MonoBehaviour:
   crouchToggle: 1
   maxSlopeAngle: 45
   slopeDownForce: 20
-  enableWallRun: 0
+  enableWallRun: 1
   wallRunSpeed: 10
   maxWallRunTime: 0
   wallCheckDistance: 1
   minJumpHeight: 2
-  wallJumpForwardForce: 10
+  wallJumpForwardForce: 5
   wallJumpUpForce: 5
   wallJumpAwayForce: 5
   wallRunCamFOV: 0
@@ -98,12 +98,18 @@ MonoBehaviour:
   sphereCastRadius: 0.3
   maxWallLookAngle: 30
   exitWallCooldown: 0.2
+  climbExitDetectionLength: 2
   enableClimbJump: 1
-  climbJumpForce: 7
+  climbJumpForce: 5
   climbJumpBackForce: 5
   climbJumps: 1
   minWallNormalAngleChange: 5
-  enableLedgeGrab: 0
+  climbStopDelay: 0.5
+  enableLedgeClimb: 0
+  ledgeClimbSpeed: 1
+  ledgeClimbCheckOffset: 1
+  ledgeClimbMinDistance: 0.1
+  enableLedgeGrab: 1
   ledgeDetectLength: 3
   ledgeDetectRadius: 0.5
   ledgeMask:
@@ -409,7 +415,7 @@ MonoBehaviour:
   enablePrimaryFire: 1
   primaryDamage: 50
   primarySpawnCameraOffset: 0
-  primaryForwardForce: 70
+  primaryForwardForce: 100
   primaryUpForce: 0
   primaryFireCooldown: 0.5
 --- !u!1 &7703793501684507398
