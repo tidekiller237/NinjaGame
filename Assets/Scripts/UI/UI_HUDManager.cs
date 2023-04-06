@@ -8,7 +8,6 @@ public class UI_HUDManager : MonoBehaviour
 {
     public TextMeshProUGUI speedText;
     public TextMeshProUGUI stateText;
-    public TextMeshProUGUI joinCodeText;
 
     public GameObject hitMarker;
 
@@ -21,20 +20,19 @@ public class UI_HUDManager : MonoBehaviour
     {
         SpeedText();
         StateText();
-        JoinCodeText();
     }
 
     private void SpeedText()
     {
-        if(PlayerController.instance != null)
-            speedText.text = "Speed: " + string.Format("{0:0.00}", PlayerController.instance.GetComponent<Rigidbody>().velocity.magnitude);
+        if(PlayerController.Instance != null)
+            speedText.text = "Speed: " + string.Format("{0:0.00}", PlayerController.Instance.GetComponent<Rigidbody>().velocity.magnitude);
     }
 
     private void StateText()
     {
-        if (PlayerController.instance == null) return;
+        if (PlayerController.Instance == null) return;
 
-        switch (PlayerController.instance.moveState)
+        switch (PlayerController.Instance.moveState)
         {
             case PlayerController.MovementState.Walking:
                 stateText.text = "Walking";
@@ -58,11 +56,6 @@ public class UI_HUDManager : MonoBehaviour
                 stateText.text = "None";
                 break;
         }
-    }
-
-    private void JoinCodeText()
-    {
-        joinCodeText.text = "Join Code: " + ConnectionManager.RelayJoinCode;
     }
 
     public void DisplayHitmarker(float duration)

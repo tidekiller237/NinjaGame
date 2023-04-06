@@ -51,7 +51,7 @@ public class HealthManager : NetworkBehaviour
                 {
                     respawning = true;
                     Invoke(nameof(Respawn), timeToRespawn);
-                    PlayerController.instance.transform.localScale = new(1f, 0.25f, 1f);
+                    PlayerController.Instance.transform.localScale = new(1f, 0.25f, 1f);
                 }
 
                 if (rb.freezeRotation)
@@ -71,8 +71,6 @@ public class HealthManager : NetworkBehaviour
                     rb.useGravity = false;
                 }
             }
-
-            PlayerController.instance.control = IsAlive;
         }
     }
 
@@ -98,7 +96,7 @@ public class HealthManager : NetworkBehaviour
         //TODO: respawn at random for now
         GetComponent<SpawnHandler>().SpawnAtRandom();
         ResetHealth();
-        PlayerController.instance.transform.localScale = Vector3.one;
+        PlayerController.Instance.transform.localScale = Vector3.one;
     }
 
     public void ResetHealth()

@@ -25,7 +25,7 @@ public class MoveAbility_Slide : Ability
         Type = AbilityType.Movement;
 
         //initialize variables
-        pc = PlayerController.instance;
+        pc = PlayerController.Instance;
         rb = pc.GetComponent<Rigidbody>();
         tf = pc.transform;
         startYScale = tf.localScale.y;

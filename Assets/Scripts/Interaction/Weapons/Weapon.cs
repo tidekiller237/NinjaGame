@@ -6,11 +6,6 @@ using Unity.Netcode;
 public class Weapon : NetworkBehaviour
 {
     public bool Activated { private get; set; }
-    public KeyCode primaryInput;
-    public KeyCode secondaryInput;
-    public KeyCode tertiaryInput;
-    public KeyCode reloadInput;
-    public KeyCode swapInput;
 
     protected Dictionary<int, GameObject> projDict;
 

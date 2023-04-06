@@ -6,11 +6,11 @@ using Unity.Netcode;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : NetworkBehaviour
 {
-    public static PlayerController instance;
+    public static PlayerController Instance;
 
     Rigidbody rb;
 
-    public bool control;
+    public bool Control { get; private set; }
     public bool restrictMovement;
 
     public GameObject visor;
@@ -162,17 +162,6 @@ public class PlayerController : NetworkBehaviour
     public GameObject weaponHolder;
     Weapon weapon1;
 
-    [Header("Keybinds")]
-    public KeyCode bind_jump = KeyCode.Space;
-    public KeyCode bind_crouch = KeyCode.LeftControl;
-    public KeyCode bind_ability1 = KeyCode.LeftShift;
-    public KeyCode bind_primaryFire = KeyCode.Mouse0;
-    public KeyCode bind_secondaryFire = KeyCode.Mouse1;
-    public KeyCode bind_tertiaryFire = KeyCode.Mouse2;
-    public KeyCode bind_reload = KeyCode.R;
-    public KeyCode bind_swapWeapon = KeyCode.Q;
-    public KeyCode bind_kill = KeyCode.Backspace;
-
     public enum MovementState
     {
         Unlimited,
@@ -197,12 +186,12 @@ public class PlayerController : NetworkBehaviour
 
         visor.SetActive(false);
 
-        if (PlayerController.instance == null)
-            PlayerController.instance = this;
+        if (PlayerController.Instance == null)
+            PlayerController.Instance = this;
         else
             Destroy(gameObject);
 
-        control = true;
+        Control = true;
         mainCamera = Camera.main.GetComponent<CameraController>();
         weapon1 = weaponHolder.GetComponent<Weapon>();
         rb = GetComponent<Rigidbody>();
@@ -223,23 +212,19 @@ public class PlayerController : NetworkBehaviour
         if(weapon1 != null)
         {
             weapon1.Activated = true;
-            weapon1.primaryInput = bind_primaryFire;
-            weapon1.secondaryInput = bind_secondaryFire;
-            weapon1.tertiaryInput = bind_tertiaryFire;
-            weapon1.reloadInput = bind_reload;
-            weapon1.swapInput = bind_swapWeapon;
         }
 
         if (ability1 != null)
         {
             ability1.Activated = true;
-            ability1.input = bind_ability1;
         }
     }
 
     private void Update()
     {
-        if (!IsOwner || !control) return;
+        ControlHandler();
+
+        if (!IsOwner || !Control) return;
 
         bool lastGrounded = grounded;
         Vector3 lastVelocity = new(rb.velocity.x, 0f, rb.velocity.z);
@@ -294,7 +279,7 @@ public class PlayerController : NetworkBehaviour
 
     private void GetInput()
     {
-        if (Input.GetKeyDown(bind_kill))
+        if (Input.GetKeyDown(GameManager.bind_kill))
             KillBindServerRpc(OwnerClientId, NetworkObjectId);
 
         horizontalInput = Input.GetAxisRaw("Horizontal");
@@ -303,7 +288,7 @@ public class PlayerController : NetworkBehaviour
         //jumping
         if(canJump)
         {
-            if (enableJump && Input.GetKeyDown(bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && (!climbing || climbStopping) && !ledgeGrabbed)
+            if (enableJump && Input.GetKeyDown(GameManager.bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && (!climbing || climbStopping) && !ledgeGrabbed)
             {
                 canJump = false;
                 Jump();
@@ -313,21 +298,21 @@ public class PlayerController : NetworkBehaviour
                 if (climbStopping)
                     SecondClimbStop();
             } 
-            else if (enableWallRun && Input.GetKeyDown(bind_jump) && wallRunning)
+            else if (enableWallRun && Input.GetKeyDown(GameManager.bind_jump) && wallRunning)
             {
                 canJump = false;
                 WallJump();
 
                 Invoke(nameof(ResetJump), jumpCoodown);
             }
-            else if(enableLedgeJump && Input.GetKeyDown(bind_jump) && ledgeGrabbed && !exitingWall)
+            else if(enableLedgeJump && Input.GetKeyDown(GameManager.bind_jump) && ledgeGrabbed && !exitingWall)
             {
                 canJump = false;
                 LedgeJump();
 
                 Invoke(nameof(ResetJump), jumpCoodown);
             }
-            else if(enableClimbJump && Input.GetKeyDown(bind_jump) && wallFront && climbJumpsLeft > 0 && !exitingWall)
+            else if(enableClimbJump && Input.GetKeyDown(GameManager.bind_jump) && wallFront && climbJumpsLeft > 0 && !exitingWall)
             {
                 canJump = false;
                 ClimbJump();
@@ -341,7 +326,7 @@ public class PlayerController : NetworkBehaviour
         {
             if (crouchToggle)
             {
-                if (Input.GetKeyDown(bind_crouch))
+                if (Input.GetKeyDown(GameManager.bind_crouch))
                 {
                     if (!crouching)
                     {
@@ -355,11 +340,11 @@ public class PlayerController : NetworkBehaviour
             }
             else
             {
-                if (Input.GetKeyDown(bind_crouch))
+                if (Input.GetKeyDown(GameManager.bind_crouch))
                 {
                     StartCrouch();
                 }
-                else if (Input.GetKeyUp(bind_crouch) && CheckStanding())
+                else if (Input.GetKeyUp(GameManager.bind_crouch) && CheckStanding())
                 {
                     StopCrouch();
                 }
@@ -483,6 +468,19 @@ public class PlayerController : NetworkBehaviour
         }
 
         moveSpeed = desiredMoveSpeed;
+    }
+
+    private void ControlHandler()
+    {
+        if (GameManager.Instance.sceneState == GameManager.SceneState.InGame && GetComponent<HealthManager>().IsAlive)
+            SetControl(true);
+        else
+            SetControl(false);
+    }
+
+    private void SetControl(bool value)
+    {
+        Control = value;
     }
 
     #endregion

@@ -39,7 +39,7 @@ public class BasicWeapon : Weapon
 
         base.Update();
 
-        if (PlayerController.instance.control)
+        if (PlayerController.Instance.Control)
         {
             //handle inputs
             GetInputs();
@@ -52,7 +52,7 @@ public class BasicWeapon : Weapon
 
     private void GetInputs()
     {
-        if(enablePrimaryFire && canPrimaryFire && Input.GetKey(primaryInput))
+        if(enablePrimaryFire && canPrimaryFire && Input.GetKey(GameManager.bind_primaryFire))
         {
             PrimaryFire();
         }
@@ -77,7 +77,7 @@ public class BasicWeapon : Weapon
     private void PrimaryFire()
     {
         canPrimaryFire = false;
-        CameraController cam = PlayerController.instance.mainCamera;
+        CameraController cam = PlayerController.Instance.mainCamera;
         Vector3 spawnLocation = cam.transform.position + cam.transform.forward * primarySpawnCameraOffset;
         Vector3 dir = cam.transform.forward;
         Vector3 force = dir * primaryForwardForce + transform.up * primaryUpForce;

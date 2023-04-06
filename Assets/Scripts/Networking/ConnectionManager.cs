@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Events;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Relay;
@@ -14,8 +15,9 @@ using Unity.Netcode.Transports.UTP;
 using Unity.Networking.Transport;
 using Unity.Networking.Transport.Relay;
 using NetworkEvent = Unity.Networking.Transport.NetworkEvent;
+using Unity.Collections;
 
-public class ConnectionManager : MonoBehaviour
+public class ConnectionManager : NetworkBehaviour
 {
     public static ConnectionManager Instance;
 
@@ -25,6 +27,9 @@ public class ConnectionManager : MonoBehaviour
 
     public static bool IsHost { get { return NetworkManager.Singleton.IsHost; } }
     public static bool IsConnected { get { return NetworkManager.Singleton.IsConnectedClient; } }
+
+    public static List<NetworkPlayer> connectedPlayers;
+    public static UnityEvent<string[]> onPlayerUdate;
 
     private void Awake()
     {
@@ -49,6 +54,12 @@ public class ConnectionManager : MonoBehaviour
         }
 
         AuthenticatePlayer();
+
+        //NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnectedListener;
+        NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnectedListener;
+
+        connectedPlayers = new List<NetworkPlayer>();
+        onPlayerUdate = new UnityEvent<string[]>();
     }
 
     async void AuthenticatePlayer()
@@ -69,6 +80,77 @@ public class ConnectionManager : MonoBehaviour
     {
         StopAllCoroutines();
         //close relay allocation
+    }
+
+    public void OnClientConnectedListener(ulong clientId)
+    {
+        //update players
+        UpdatePlayersServerRpc();
+    }
+
+    public void OnClientDisconnectedListener(ulong clientId)
+    {
+        //update players
+        UpdatePlayersServerRpc();
+    }
+
+    private void UpdatePlayers()
+    {
+        FixedString64Bytes[] names = new FixedString64Bytes[8];
+
+        connectedPlayers.Clear();
+
+        foreach(var player in NetworkManager.Singleton.ConnectedClientsList)
+        {
+            connectedPlayers.Add(player.PlayerObject.GetComponent<NetworkPlayer>());
+        }
+        for(int i = 0; i < NetworkManager.Singleton.ConnectedClientsList.Count; i++)
+        {
+            connectedPlayers.Add(NetworkManager.Singleton.ConnectedClientsList[i].PlayerObject.GetComponent<NetworkPlayer>());
+
+            if (i < 8)
+                names[i] = NetworkManager.Singleton.ConnectedClientsList[i].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value;
+        }
+
+        UpdatePlayerNamesClientRpc(
+            names[0],
+            names[1],
+            names[2],
+            names[3],
+            names[4],
+            names[5],
+            names[6],
+            names[7]
+            );
+    }
+
+    [ServerRpc]
+    private void UpdatePlayersServerRpc()
+    {
+        UpdatePlayers();
+    }
+
+    [ClientRpc]
+    private void UpdatePlayerNamesClientRpc(
+        FixedString64Bytes l1, 
+        FixedString64Bytes l2, 
+        FixedString64Bytes l3, 
+        FixedString64Bytes l4, 
+        FixedString64Bytes l5, 
+        FixedString64Bytes l6, 
+        FixedString64Bytes l7, 
+        FixedString64Bytes l8)
+    {
+        string[] newList = new string[8];
+        newList[0] = l1.ToString();
+        newList[1] = l2.ToString();
+        newList[2] = l3.ToString();
+        newList[3] = l4.ToString();
+        newList[4] = l5.ToString();
+        newList[5] = l6.ToString();
+        newList[6] = l8.ToString();
+
+        onPlayerUdate.Invoke(newList);
     }
 
     #region Host
@@ -178,6 +260,18 @@ public class ConnectionManager : MonoBehaviour
         Debug.Log($"client: {allocation.AllocationId}");
 
         return new RelayServerData(allocation, "dtls");
+    }
+
+    public void SetPlayerName(string playerName)
+    {
+        SetPlayerNameServerRpc(OwnerClientId, playerName);
+    }
+
+    [ServerRpc]
+    public void SetPlayerNameServerRpc(ulong clientId, string playerName)
+    {
+        NetworkManager.Singleton.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().SetName(playerName);
+        UpdatePlayersServerRpc();
     }
 
     #endregion

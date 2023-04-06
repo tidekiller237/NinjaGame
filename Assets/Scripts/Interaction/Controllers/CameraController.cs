@@ -8,9 +8,9 @@ public class CameraController : MonoBehaviour
     Camera cam;
     GameManager.SceneState lastState;
 
-    [Header("MainMenu")]
-    public Transform mainMenuTf;
-    bool mainMenu;
+    public Transform menuTf;
+    bool menu;
+    bool inGame;
 
     [Header("In Game")]
     public float sensitivityX;
@@ -22,7 +22,6 @@ public class CameraController : MonoBehaviour
     GameObject playerObject;
     bool lerpFov;
     bool lerpTilt;
-    bool inGame;
 
     private void Start()
     {
@@ -32,17 +31,19 @@ public class CameraController : MonoBehaviour
 
     private void Update()
     {
-        if (GameManager.instance.sceneState != lastState)
+        if (GameManager.Instance.sceneState != lastState)
             HandleStateChange();
 
-        if (PlayerController.instance != null) playerObject = PlayerController.instance.gameObject;
+        if (PlayerController.Instance != null) playerObject = PlayerController.Instance.gameObject;
         else playerObject = null;
 
-        if (mainMenu)
+        if (menu)
         {
-            transform.position = mainMenuTf.position;
-            transform.rotation = mainMenuTf.rotation;
-        } else if (inGame && playerObject != null)
+            //show level menu
+            transform.parent.position = menuTf.position;
+            transform.parent.rotation = menuTf.rotation;
+        }
+        else if (inGame && playerObject != null)
         {
             if (playerObject.GetComponent<HealthManager>().IsAlive)
             {
@@ -57,12 +58,6 @@ public class CameraController : MonoBehaviour
             yRotation += mouseX;
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -90, 90);
-
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                Cursor.lockState = (Cursor.lockState == CursorLockMode.Locked) ? CursorLockMode.None : CursorLockMode.Locked;
-                Cursor.visible = Cursor.lockState != CursorLockMode.Locked;
-            }
         }
     }
 
@@ -70,32 +65,33 @@ public class CameraController : MonoBehaviour
     {
         if (inGame && playerObject != null)
             //rotation
-            transform.parent.localRotation = Quaternion.Euler(xRotation, yRotation, 0f);
+            transform.parent.rotation = Quaternion.Euler(xRotation, yRotation, 0f);
     }
 
     private void FixedUpdate()
     {
         if (inGame && playerObject != null && playerObject.GetComponent<HealthManager>().IsAlive)
             //rotation
-            playerObject.transform.localRotation = Quaternion.Euler(0f, yRotation, 0f);
+            playerObject.transform.rotation = Quaternion.Euler(0f, yRotation, 0f);
     }
 
     private void HandleStateChange()
     {
-        mainMenu = GameManager.instance.sceneState == GameManager.SceneState.MainMenu;
-        inGame = GameManager.instance.sceneState == GameManager.SceneState.InGame;
-
-        if (mainMenu)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        } else if (inGame)
+        menu = GameManager.Instance.sceneState == GameManager.SceneState.LevelMenu;
+        inGame = GameManager.Instance.sceneState == GameManager.SceneState.InGame;
+        
+        if (inGame)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+        else
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
 
-        lastState = GameManager.instance.sceneState;
+        lastState = GameManager.Instance.sceneState;
     }
 
     public void FOV(float delta, float tTime)
