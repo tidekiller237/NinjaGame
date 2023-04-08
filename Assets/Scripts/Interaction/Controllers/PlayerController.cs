@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 using Unity.Netcode;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -15,6 +16,7 @@ public class PlayerController : NetworkBehaviour
 
     [Header("Camera")]
     public CameraController mainCamera;
+    public Camera handCam;
 
     [Header("Movement")]
     public bool enableMovement;
@@ -160,6 +162,11 @@ public class PlayerController : NetworkBehaviour
     public GameObject weaponHolder;
     Weapon weapon1;
 
+    //public UnityEvent PrimaryRangedTrigger1;
+    //public UnityEvent PrimaryRangedTrigger2;
+    //public UnityEvent PrimaryMeleeTrigger1;
+    //public UnityEvent PrimaryMeleeTrigger2;
+
     public enum MovementState
     {
         Unlimited,
@@ -215,9 +222,15 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
-        ControlHandler();
+        if(!IsOwner && handCam.gameObject.activeInHierarchy)
+            handCam.gameObject.SetActive(false);
+        if (!IsOwner) return;
 
-        if (!IsOwner || !Control) return;
+        handCam.transform.position = mainCamera.transform.position;
+        handCam.transform.rotation = mainCamera.transform.rotation;
+
+        ControlHandler();
+        if (!Control) return;
 
         bool lastGrounded = grounded;
         Vector3 lastVelocity = new(rb.velocity.x, 0f, rb.velocity.z);
@@ -971,6 +984,30 @@ public class PlayerController : NetworkBehaviour
         if (obj != null && obj.OwnerClientId == clientId)
             obj.GetComponent<HealthManager>().Damage(1000);
     }
+
+    #endregion
+
+    #region Weapon
+
+    //public void TriggerMelee1()
+    //{
+    //    PrimaryMeleeTrigger1.Invoke();
+    //}
+    //
+    //public void TriggerMelee2()
+    //{
+    //    PrimaryMeleeTrigger2.Invoke();
+    //}
+    //
+    //public void TriggerRanged1()
+    //{
+    //    PrimaryRangedTrigger1.Invoke();
+    //}
+    //
+    //public void TriggerRanged2()
+    //{
+    //    PrimaryRangedTrigger2.Invoke();
+    //}
 
     #endregion
 }

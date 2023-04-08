@@ -252,6 +252,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   visualComponent: {fileID: 914618917343319890}
   visualSpeed: 1
+  netId: 0
 --- !u!1001 &809478543382982841
 PrefabInstance:
   m_ObjectHideFlags: 0
