@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Unity.Netcode;
+using System;
 
 public class GameManager : MonoBehaviour
 {
     //singleton
     public static GameManager Instance;
     public SceneState sceneState;
+    public SceneState lastSceneState;
+    public string currentLevel;
 
     public GameObject[] enableOnStart;
 
@@ -31,6 +34,7 @@ public class GameManager : MonoBehaviour
         InGame,
         Lobby,
         LevelMenu,  //this is the menu inside of the levels
+        LevelLoading
     }
 
     private void Awake()
@@ -62,9 +66,21 @@ public class GameManager : MonoBehaviour
         #endregion
     }
 
-    public void RequestSceneStateChange(SceneState desiredState)
+    private void Update()
+    {
+        if (SceneManager.GetActiveScene().name != "MainMenu" && !ConnectionManager.IsHost && !ConnectionManager.IsConnectedClient)
+        {
+            NetworkManager.Singleton.Shutdown();
+            RequestSceneChange("MainMenu");
+        }
+    }
+
+    #region Scene Changing
+
+    private void SceneStateChange(SceneState desiredState)
     {
         //TODO: perform appropriate checks
+        lastSceneState = sceneState;
         sceneState = desiredState;
     }
 
@@ -75,8 +91,71 @@ public class GameManager : MonoBehaviour
 
     public void RequestSceneChange(string sceneName)
     {
-        SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+        switch (sceneName)
+        {
+            case "MainMenu":
+                if(SceneManager.GetActiveScene().name != "MainMenu")
+                    SceneManager.LoadScene("MainMenu", LoadSceneMode.Single);
+
+                currentLevel = "MainMenu";
+                SceneStateChange(SceneState.MainMenu);
+                break;
+            case "Lobby":
+                if (SceneManager.GetActiveScene().name != "MainMenu")
+                    SceneManager.LoadScene("MainMenu", LoadSceneMode.Single);
+
+                currentLevel = "MainMenu";
+                SceneStateChange(SceneState.Lobby);
+                break;
+            case "InGame":
+                if((SceneManager.GetActiveScene().name.Contains("Level") || SceneManager.GetActiveScene().name.Contains("level")) 
+                    && NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character != null)
+                {
+                    SceneStateChange(SceneState.InGame);
+                }
+                break;
+            case "Pause":
+                if (SceneManager.GetActiveScene().name.Contains("Level") || SceneManager.GetActiveScene().name.Contains("level"))
+                {
+                    SceneStateChange(SceneState.Paused);
+                }
+                break;
+            case "Unpause":
+                if (sceneState == SceneState.Paused)
+                    SceneStateChange(lastSceneState);
+                break;
+            default:
+                SceneManager.sceneLoaded += OnLevelLoaded;
+
+                try
+                {
+                    SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+                    SceneStateChange(SceneState.LevelLoading);
+                }
+                catch (Exception e)
+                {
+                    SceneManager.sceneLoaded -= OnLevelLoaded;
+                    Debug.LogError($"Failed to load scene. Error message: {e.Message}");
+                    SceneManager.LoadScene("MainMenu", LoadSceneMode.Single);
+                    SceneStateChange(SceneState.Lobby);
+                }
+                break;
+        }
     }
+
+    public void OnLevelLoaded(Scene scene, LoadSceneMode mode)
+    {
+        SceneManager.sceneLoaded -= OnLevelLoaded;
+        currentLevel = scene.name;
+        Debug.Log("Level Loaded");
+        Debug.Log(scene.name);
+        Debug.Log(mode);
+
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().LevelLoadedSuccessfully();
+        SceneStateChange(SceneState.LevelMenu);
+    }
+
+    #endregion
 
     #region Main Menu
 
@@ -111,9 +190,9 @@ public class GameManager : MonoBehaviour
 
         if (ConnectionManager.IsHost)
         {
-            GameManager.Instance.RequestSceneStateChange(GameManager.SceneState.InGame);
+            GameManager.Instance.SceneStateChange(GameManager.SceneState.InGame);
             ConnectionManager.Instance.SetPlayerName(playerName);
-            RequestSceneStateChange(SceneState.Lobby);
+            RequestSceneChange("Lobby");
         }
         else
         {
@@ -140,17 +219,17 @@ public class GameManager : MonoBehaviour
         clientTime = 0f;
         ConnectionManager.Instance.InitializeClient(joinCode);
 
-        while (!ConnectionManager.IsConnected && clientTime < attemptClientTime)
+        while (!ConnectionManager.IsConnectedClient && clientTime < attemptClientTime)
         {
             clientTime += Time.deltaTime;
             yield return null;
         }
 
-        if (ConnectionManager.IsConnected)
+        if (ConnectionManager.IsConnectedClient)
         {
-            GameManager.Instance.RequestSceneStateChange(GameManager.SceneState.InGame);
+            GameManager.Instance.SceneStateChange(GameManager.SceneState.InGame);
             ConnectionManager.Instance.SetPlayerName(playerName);
-            RequestSceneStateChange(SceneState.Lobby);
+            RequestSceneChange("Lobby");
         }
         else
         {

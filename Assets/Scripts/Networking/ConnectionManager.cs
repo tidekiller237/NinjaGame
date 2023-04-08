@@ -21,15 +21,16 @@ public class ConnectionManager : NetworkBehaviour
 {
     public static ConnectionManager Instance;
 
-    const int MaxConnections = 4;
+    const int MaxConnections = 8;
     public static string RelayJoinCode;
     public static string AuthPlayerID;
 
     public static bool IsHost { get { return NetworkManager.Singleton.IsHost; } }
-    public static bool IsConnected { get { return NetworkManager.Singleton.IsConnectedClient; } }
+    public static bool IsConnectedClient { get { return NetworkManager.Singleton.IsConnectedClient; } }
 
-    public static List<NetworkPlayer> connectedPlayers;
-    public static UnityEvent<string[]> onPlayerUdate;
+    public NetworkVariable<bool> waitingForPlayers;
+    public NetworkList<ulong> connectedPlayersIds;
+    public NetworkList<FixedString64Bytes> connectedPlayersNames;
 
     private void Awake()
     {
@@ -55,11 +56,12 @@ public class ConnectionManager : NetworkBehaviour
 
         AuthenticatePlayer();
 
-        //NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnectedListener;
-        NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnectedListener;
+        waitingForPlayers = new NetworkVariable<bool>();
+        connectedPlayersIds = new NetworkList<ulong>();
+        connectedPlayersNames = new NetworkList<FixedString64Bytes>();
 
-        connectedPlayers = new List<NetworkPlayer>();
-        onPlayerUdate = new UnityEvent<string[]>();
+        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnectedListener;
+        NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnectedListener;
     }
 
     async void AuthenticatePlayer()
@@ -79,78 +81,37 @@ public class ConnectionManager : NetworkBehaviour
     public void CancelConnection()
     {
         StopAllCoroutines();
+        NetworkManager.Singleton.Shutdown();
         //close relay allocation
     }
 
     public void OnClientConnectedListener(ulong clientId)
     {
-        //update players
-        UpdatePlayersServerRpc();
+        if (!IsServer) return;
+        if(clientId == NetworkManager.Singleton.LocalClientId)
+        {
+            connectedPlayersIds.Clear();
+            connectedPlayersNames.Clear();
+        }
+
+        AddPlayer(clientId);
+        EvaluateSceneState(clientId);
     }
 
     public void OnClientDisconnectedListener(ulong clientId)
     {
-        //update players
-        UpdatePlayersServerRpc();
+        if(!IsServer) return;
+        RemovePlayer(clientId);
     }
 
-    private void UpdatePlayers()
+    private void EvaluateSceneState(ulong clientId)
     {
-        FixedString64Bytes[] names = new FixedString64Bytes[8];
+        GameManager.SceneState currState = GameManager.Instance.sceneState;
 
-        connectedPlayers.Clear();
-
-        foreach(var player in NetworkManager.Singleton.ConnectedClientsList)
+        if(currState != GameManager.SceneState.MainMenu && currState != GameManager.SceneState.Lobby)
         {
-            connectedPlayers.Add(player.PlayerObject.GetComponent<NetworkPlayer>());
+            BeginLevelTransitionClientRpc(clientId, new FixedString64Bytes(GameManager.Instance.currentLevel));
         }
-        for(int i = 0; i < NetworkManager.Singleton.ConnectedClientsList.Count; i++)
-        {
-            connectedPlayers.Add(NetworkManager.Singleton.ConnectedClientsList[i].PlayerObject.GetComponent<NetworkPlayer>());
-
-            if (i < 8)
-                names[i] = NetworkManager.Singleton.ConnectedClientsList[i].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value;
-        }
-
-        UpdatePlayerNamesClientRpc(
-            names[0],
-            names[1],
-            names[2],
-            names[3],
-            names[4],
-            names[5],
-            names[6],
-            names[7]
-            );
-    }
-
-    [ServerRpc]
-    private void UpdatePlayersServerRpc()
-    {
-        UpdatePlayers();
-    }
-
-    [ClientRpc]
-    private void UpdatePlayerNamesClientRpc(
-        FixedString64Bytes l1, 
-        FixedString64Bytes l2, 
-        FixedString64Bytes l3, 
-        FixedString64Bytes l4, 
-        FixedString64Bytes l5, 
-        FixedString64Bytes l6, 
-        FixedString64Bytes l7, 
-        FixedString64Bytes l8)
-    {
-        string[] newList = new string[8];
-        newList[0] = l1.ToString();
-        newList[1] = l2.ToString();
-        newList[2] = l3.ToString();
-        newList[3] = l4.ToString();
-        newList[4] = l5.ToString();
-        newList[5] = l6.ToString();
-        newList[6] = l8.ToString();
-
-        onPlayerUdate.Invoke(newList);
     }
 
     #region Host
@@ -264,14 +225,90 @@ public class ConnectionManager : NetworkBehaviour
 
     public void SetPlayerName(string playerName)
     {
-        SetPlayerNameServerRpc(OwnerClientId, playerName);
+        //set player name
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().SetName(playerName);
     }
 
-    [ServerRpc]
-    public void SetPlayerNameServerRpc(ulong clientId, string playerName)
+    #endregion
+
+    #region Lobby
+
+    private void AddPlayer(ulong clientId)
     {
-        NetworkManager.Singleton.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().SetName(playerName);
-        UpdatePlayersServerRpc();
+        if (connectedPlayersIds.Contains(clientId)) return;
+
+        connectedPlayersIds.Add(clientId);
+        connectedPlayersNames.Add(NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value);
+        NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.OnValueChanged += UpdatePlayerName;
+    }
+
+    private void RemovePlayer(ulong clientId)
+    {
+        if (!connectedPlayersIds.Contains(clientId)) return;
+
+        int index = connectedPlayersIds.IndexOf(clientId);
+        connectedPlayersIds.RemoveAt(index);
+        connectedPlayersNames.RemoveAt(index);
+    }
+
+    private void UpdatePlayerName(FixedString64Bytes oldValue, FixedString64Bytes newValue)
+    {
+        int index = connectedPlayersNames.IndexOf(oldValue);
+        connectedPlayersNames[index] = newValue;
+    }
+
+    #endregion
+
+    #region Scene
+
+    public void RequestNetworkSceneChange(string sceneName)
+    {
+        if (!IsServer) return;
+        BeginLevelTransitionClientRpc(new FixedString64Bytes(sceneName));
+        StartLevel();
+    }
+
+    [ClientRpc]
+    private void BeginLevelTransitionClientRpc(FixedString64Bytes sceneName)
+    {
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().StartLoadLevel();
+        GameManager.Instance.RequestSceneChange(sceneName.ToString());
+    }
+
+    [ClientRpc]
+    private void BeginLevelTransitionClientRpc(ulong targetClient, FixedString64Bytes sceneName)
+    {
+        if (NetworkManager.Singleton.LocalClientId != targetClient) return;
+
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().StartLoadLevel();
+        GameManager.Instance.RequestSceneChange(sceneName.ToString());
+    }
+
+    public void StartLevel()
+    {
+        if (!IsServer) return;
+
+        StartCoroutine(WaitForPlayers());
+    }
+
+    private IEnumerator WaitForPlayers()
+    {
+        waitingForPlayers.Value = true;
+        bool check = false;
+
+        while (!check)
+        {
+            yield return null;
+            check = true;
+
+            for(int i = 0; i < connectedPlayersIds.Count; i++)
+            {
+                if (!NetworkManager.ConnectedClients[connectedPlayersIds[i]].PlayerObject.GetComponent<NetworkPlayer>().levelLoaded.Value)
+                    check = false;
+            }
+        }
+
+        waitingForPlayers.Value = false;
     }
 
     #endregion

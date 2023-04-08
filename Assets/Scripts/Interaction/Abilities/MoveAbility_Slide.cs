@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Netcode;
 
 public class MoveAbility_Slide : Ability
 {
@@ -25,7 +26,7 @@ public class MoveAbility_Slide : Ability
         Type = AbilityType.Movement;
 
         //initialize variables
-        pc = PlayerController.Instance;
+        pc = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller;
         rb = pc.GetComponent<Rigidbody>();
         tf = pc.transform;
         startYScale = tf.localScale.y;

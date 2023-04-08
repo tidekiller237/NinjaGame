@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Netcode;
 
 public class UI_HUDManager : MonoBehaviour
 {
@@ -24,15 +25,15 @@ public class UI_HUDManager : MonoBehaviour
 
     private void SpeedText()
     {
-        if(PlayerController.Instance != null)
-            speedText.text = "Speed: " + string.Format("{0:0.00}", PlayerController.Instance.GetComponent<Rigidbody>().velocity.magnitude);
+        if(NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller != null)
+            speedText.text = "Speed: " + string.Format("{0:0.00}", NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.GetComponent<Rigidbody>().velocity.magnitude);
     }
 
     private void StateText()
     {
-        if (PlayerController.Instance == null) return;
+        if (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller == null) return;
 
-        switch (PlayerController.Instance.moveState)
+        switch (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.moveState)
         {
             case PlayerController.MovementState.Walking:
                 stateText.text = "Walking";

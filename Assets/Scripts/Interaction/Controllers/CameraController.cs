@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
+using Unity.Netcode;
 
 public class CameraController : MonoBehaviour
 {
@@ -34,7 +35,7 @@ public class CameraController : MonoBehaviour
         if (GameManager.Instance.sceneState != lastState)
             HandleStateChange();
 
-        if (PlayerController.Instance != null) playerObject = PlayerController.Instance.gameObject;
+        if (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller != null) playerObject = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character;
         else playerObject = null;
 
         if (menu)

@@ -6,8 +6,6 @@ using Unity.Netcode;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : NetworkBehaviour
 {
-    public static PlayerController Instance;
-
     Rigidbody rb;
 
     public bool Control { get; private set; }
@@ -185,11 +183,6 @@ public class PlayerController : NetworkBehaviour
         if (!IsOwner) return;
 
         visor.SetActive(false);
-
-        if (PlayerController.Instance == null)
-            PlayerController.Instance = this;
-        else
-            Destroy(gameObject);
 
         Control = true;
         mainCamera = Camera.main.GetComponent<CameraController>();

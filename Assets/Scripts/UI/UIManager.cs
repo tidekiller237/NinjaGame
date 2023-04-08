@@ -8,8 +8,9 @@ public class UIManager : MonoBehaviour
 
     public GameObject UI_MainMenu;
     public GameObject UI_HUD;
-    public GameObject UI_LevelMenu;
+    public GameObject UI_Pause;
     public GameObject UI_Lobby;
+    public GameObject UI_LevelMenu;
 
     GameManager.SceneState lastState;
 
@@ -50,14 +51,19 @@ public class UIManager : MonoBehaviour
                 UI_HUD.SetActive(true);
                 break;
 
-            //only level menu is active
-            case GameManager.SceneState.LevelMenu:
-                UI_LevelMenu.SetActive(true);
+            //only pause menu is active
+            case GameManager.SceneState.Paused:
+                UI_Pause.SetActive(true);
                 break;
 
             //only lobby is active
             case GameManager.SceneState.Lobby:
                 UI_Lobby.SetActive(true);
+                break;
+
+            //only level menu is active
+            case GameManager.SceneState.LevelMenu:
+                UI_LevelMenu.SetActive(true);
                 break;
 
             //nothing is active

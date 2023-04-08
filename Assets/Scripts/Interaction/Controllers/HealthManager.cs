@@ -51,7 +51,7 @@ public class HealthManager : NetworkBehaviour
                 {
                     respawning = true;
                     Invoke(nameof(Respawn), timeToRespawn);
-                    PlayerController.Instance.transform.localScale = new(1f, 0.25f, 1f);
+                    NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.transform.localScale = new(1f, 0.25f, 1f);
                 }
 
                 if (rb.freezeRotation)
@@ -96,7 +96,7 @@ public class HealthManager : NetworkBehaviour
         //TODO: respawn at random for now
         GetComponent<SpawnHandler>().SpawnAtRandom();
         ResetHealth();
-        PlayerController.Instance.transform.localScale = Vector3.one;
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.transform.localScale = Vector3.one;
     }
 
     public void ResetHealth()

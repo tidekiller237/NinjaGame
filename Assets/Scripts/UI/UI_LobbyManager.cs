@@ -6,7 +6,7 @@ using Unity.Netcode;
 using TMPro;
 using Unity.Collections;
 
-public class UI_LobbyManager : NetworkBehaviour
+public class UI_LobbyManager : MonoBehaviour
 {
     bool connected;
 
@@ -19,8 +19,7 @@ public class UI_LobbyManager : NetworkBehaviour
     public TextMeshProUGUI joinCodeText;
     public Button startButton;
     public Button disconnectButton;
-
-    public List<string> playerNames;
+    public Button copyCodeButton;
 
     #endregion
 
@@ -28,22 +27,16 @@ public class UI_LobbyManager : NetworkBehaviour
 
     [Header("Not Connected")]
     public GameObject notConnectedMenu;
-    public Button ncReturnButton;
-
-    public void NCReturnButtonOnClick()
-    {
-        GameManager.Instance.RequestSceneStateChange(GameManager.SceneState.MainMenu);
-    }
+    public Button returnButton;
 
     #endregion
 
     private void Start()
     {
-        //if(IsServer)
-        //    playerNames = new NetworkList<FixedString64Bytes>();
-
-        ncReturnButton.onClick.AddListener(NCReturnButtonOnClick);
-        ConnectionManager.onPlayerUdate.AddListener(UpdatePlayerNames);
+        startButton.onClick.AddListener(StartOnClick);
+        disconnectButton.onClick.AddListener(DisconnectOnClick);
+        copyCodeButton.onClick.AddListener(CopyButtonOnClick);
+        returnButton.onClick.AddListener(ReturnButtonOnClick);
     }
 
     private void Update()
@@ -53,12 +46,16 @@ public class UI_LobbyManager : NetworkBehaviour
         connectedMenu.SetActive(connected);
         hostOnlyMenu.SetActive(connected && NetworkManager.Singleton.IsHost);
         notConnectedMenu.SetActive(!connected);
-
         //show names
-        for(int i = 0; i < Mathf.Min(playerNames.Count, nameFields.Length); i++)
+        for(int i = 0; i < nameFields.Length; i++)
         {
-            if (playerNames[i] != null)
-                nameFields[i].text = playerNames[i];
+            string str = ""; 
+            
+            if(i < ConnectionManager.Instance.connectedPlayersNames.Count)
+                str = ConnectionManager.Instance.connectedPlayersNames[i].ToString();
+
+            if (str != null && str != "")
+                nameFields[i].text = str;
             else
                 nameFields[i].text = "Empty";
         }
@@ -67,10 +64,29 @@ public class UI_LobbyManager : NetworkBehaviour
         joinCodeText.text = "Join Code: " + ConnectionManager.RelayJoinCode;
     }
 
-    private void UpdatePlayerNames(string[] names)
+    private void StartOnClick()
     {
-        playerNames.Clear();
-        foreach (string str in names)
-            playerNames.Add(str);
+        if (!ConnectionManager.IsHost) return;
+
+        //start game
+        ConnectionManager.Instance.RequestNetworkSceneChange("Development_Level");
+    }
+
+    private void DisconnectOnClick()
+    {
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().Disconnect();
+        GameManager.Instance.RequestSceneChange("MainMenu");
+    }
+
+    private void ReturnButtonOnClick()
+    {
+        //NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().Disconnect();
+        NetworkManager.Singleton.Shutdown();
+        GameManager.Instance.RequestSceneChange("MainMenu");
+    }
+
+    private void CopyButtonOnClick()
+    {
+        GUIUtility.systemCopyBuffer = ConnectionManager.RelayJoinCode;
     }
 }

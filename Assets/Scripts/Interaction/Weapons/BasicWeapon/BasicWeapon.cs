@@ -39,7 +39,7 @@ public class BasicWeapon : Weapon
 
         base.Update();
 
-        if (PlayerController.Instance.Control)
+        if (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.Control)
         {
             //handle inputs
             GetInputs();
@@ -77,7 +77,7 @@ public class BasicWeapon : Weapon
     private void PrimaryFire()
     {
         canPrimaryFire = false;
-        CameraController cam = PlayerController.Instance.mainCamera;
+        CameraController cam = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.mainCamera;
         Vector3 spawnLocation = cam.transform.position + cam.transform.forward * primarySpawnCameraOffset;
         Vector3 dir = cam.transform.forward;
         Vector3 force = dir * primaryForwardForce + transform.up * primaryUpForce;
@@ -96,7 +96,8 @@ public class BasicWeapon : Weapon
 
     public void PrimaryOnImpact(GameObject context, Collider collider)
     {
-        if (collider.CompareTag("Player") && collider.GetComponent<HealthManager>().IsAlive)
+        if (collider.CompareTag("Player") && collider.GetComponent<HealthManager>().IsAlive
+            && collider.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character)
         {
             UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.25f);
             DestroyProjectileServerRPC(context.GetComponent<ProjectileBalistics>().netId);
