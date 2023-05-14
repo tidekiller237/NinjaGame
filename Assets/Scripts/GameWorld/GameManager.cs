@@ -12,20 +12,41 @@ public class GameManager : MonoBehaviour
     public SceneState sceneState;
     public SceneState lastSceneState;
     public string currentLevel;
+    public LayerMask Team1Mask;
+    public LayerMask Team2Mask;
+    public LayerMask GroundMask;
+    public LayerMask PlayerMask;
 
     public GameObject[] enableOnStart;
+
+    public List<NetworkPlayer> team1 = new List<NetworkPlayer>();
+    public List<NetworkPlayer> team2 = new List<NetworkPlayer>();
+
+    [Header("Player Game Variables")]
+    public float playerWalkSpeed;
+    public int playerHealth;
 
     [Header("Keybinds")]
     public static KeyCode bind_jump = KeyCode.Space;
     public static KeyCode bind_crouch = KeyCode.LeftControl;
-    public static KeyCode bind_ability1 = KeyCode.LeftShift;
+    public static KeyCode bind_abilityShift = KeyCode.LeftShift;
+    public static KeyCode bind_ability1 = KeyCode.E;
+    public static KeyCode bind_ability2 = KeyCode.Q;
+    public static KeyCode bind_ability3 = KeyCode.R;
+    public static KeyCode bind_spell1 = KeyCode.Z;
+    public static KeyCode bind_spell2 = KeyCode.X;
+    public static KeyCode bind_spell3 = KeyCode.C;
     public static KeyCode bind_primaryFire = KeyCode.Mouse0;
     public static KeyCode bind_secondaryFire = KeyCode.Mouse1;
     public static KeyCode bind_tertiaryFire = KeyCode.Mouse2;
-    public static KeyCode bind_reload = KeyCode.R;
-    public static KeyCode bind_swapWeapon = KeyCode.Q;
+    public static KeyCode bind_swapWeapon = KeyCode.Alpha2;
     public static KeyCode bind_kill = KeyCode.Backspace;
     public static KeyCode bind_pause = KeyCode.Escape;
+
+    [Header("Game Related Tags")]
+    public static string tag_team1 = "Team1";
+    public static string tag_team2 = "Team2";
+    public static string tag_spectator = "Spectator";
 
     public enum SceneState
     {
@@ -191,7 +212,7 @@ public class GameManager : MonoBehaviour
         if (ConnectionManager.IsHost)
         {
             GameManager.Instance.SceneStateChange(GameManager.SceneState.InGame);
-            ConnectionManager.Instance.SetPlayerName(playerName);
+            ConnectionManager.Instance.SetPlayerIdAndName(NetworkManager.Singleton.LocalClientId, playerName);
             RequestSceneChange("Lobby");
         }
         else
@@ -228,7 +249,7 @@ public class GameManager : MonoBehaviour
         if (ConnectionManager.IsConnectedClient)
         {
             GameManager.Instance.SceneStateChange(GameManager.SceneState.InGame);
-            ConnectionManager.Instance.SetPlayerName(playerName);
+            ConnectionManager.Instance.SetPlayerIdAndName(NetworkManager.Singleton.LocalClientId, playerName);
             RequestSceneChange("Lobby");
         }
         else
@@ -238,6 +259,46 @@ public class GameManager : MonoBehaviour
         }
 
         AttemptingConnection = false;
+    }
+
+    #endregion
+
+    #region Teams
+
+    public void SetPlayerToTeam(NetworkPlayer player, int team)
+    {
+        if(team == 1)
+        {
+            if (!team1.Contains(player))
+            {
+                if (team2.Contains(player))
+                    team2.Remove(player);
+
+                team1.Add(player);
+            }
+        }
+        else if(team == 2)
+        {
+            if (!team2.Contains(player))
+            {
+                if (team1.Contains(player))
+                    team1.Remove(player);
+
+                team2.Add(player);
+            }
+        }
+    }
+
+    public void RemovePlayerFromTeam(NetworkPlayer player, int team)
+    {
+        if(team == 1 && team1.Contains(player))
+        {
+            team1.Remove(player);
+        }
+        else if(team == 2 && team2.Contains(player))
+        {
+            team2.Remove(player);
+        }
     }
 
     #endregion

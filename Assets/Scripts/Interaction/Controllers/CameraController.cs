@@ -12,6 +12,8 @@ public class CameraController : MonoBehaviour
     public Transform menuTf;
     bool menu;
     bool inGame;
+    float mouseX;
+    float mouseY;
 
     [Header("In Game")]
     public float sensitivityX;
@@ -54,12 +56,21 @@ public class CameraController : MonoBehaviour
             }
 
             //mouse input
-            float mouseX = Input.GetAxisRaw("Mouse X") * sensitivityX;
-            float mouseY = Input.GetAxisRaw("Mouse Y") * sensitivityY;
+            Inputs();
             yRotation += mouseX;
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -90, 90);
         }
+    }
+
+    private void Inputs()
+    {
+        StatusEffects effects = playerObject.GetComponent<PlayerController>().statusEffects;
+
+        if (effects.stunned) return;
+
+        mouseX = Input.GetAxisRaw("Mouse X") * sensitivityX;
+        mouseY = Input.GetAxisRaw("Mouse Y") * sensitivityY;
     }
 
     private void LateUpdate()
@@ -93,6 +104,12 @@ public class CameraController : MonoBehaviour
         }
 
         lastState = GameManager.Instance.sceneState;
+    }
+
+    public void OverrideRotation(float rotationX, float rotationY)
+    {
+        xRotation = rotationX;
+        yRotation = rotationY;
     }
 
     public void FOV(float delta, float tTime)

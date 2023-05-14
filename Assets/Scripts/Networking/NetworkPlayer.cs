@@ -6,8 +6,11 @@ using Unity.Collections;
 
 public class NetworkPlayer : NetworkBehaviour
 {
+    public NetworkVariable<ulong> playerId = new NetworkVariable<ulong>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     public NetworkVariable<FixedString64Bytes> playerName = new NetworkVariable<FixedString64Bytes>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     public NetworkVariable<bool> levelLoaded = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    public NetworkVariable<int> assignedTeam = new NetworkVariable<int>(-1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    public NetworkVariable<FixedString64Bytes> currentCharacter = new NetworkVariable<FixedString64Bytes>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     public GameObject character;
     public PlayerController controller;
@@ -15,6 +18,23 @@ public class NetworkPlayer : NetworkBehaviour
     private void Awake()
     {
         DontDestroyOnLoad(this);
+    }
+
+    private void Update()
+    {
+        if (!IsOwner) return;
+
+        if(controller != null)
+        {
+            if (controller.Team != assignedTeam.Value)
+                controller.SetTeamServerRpc(assignedTeam.Value);
+        }
+    }
+
+    public void SetId(ulong _id)
+    {
+        if (IsOwner)
+            playerId.Value = _id;
     }
 
     public void SetName(string _name)
@@ -63,6 +83,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         character = newChar;
         controller = character.GetComponent<PlayerController>();
+        currentCharacter.Value = new FixedString64Bytes(controller.characterName);
         GameManager.Instance.RequestSceneChange("InGame");
     }
 
@@ -80,5 +101,18 @@ public class NetworkPlayer : NetworkBehaviour
         if (NetworkManager.Singleton.LocalClientId != targetClient) return;
 
         AssignCharacter(GetNetworkObject(objectId).gameObject);
+    }
+
+    [ClientRpc]
+    public void AssignTeamClientRpc(ulong targetClient, ulong playerNetPlayerId, int team)
+    {
+
+        if (NetworkManager.Singleton.LocalClientId == targetClient)
+        {
+            assignedTeam.Value = team;
+            GameManager.Instance.SetPlayerToTeam(this, team);
+        }
+        else
+            GameManager.Instance.SetPlayerToTeam(GetNetworkObject(playerNetPlayerId).GetComponent<NetworkPlayer>(), team);
     }
 }

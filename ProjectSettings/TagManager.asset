@@ -3,7 +3,12 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 2
-  tags: []
+  tags:
+  - Hitbox_Critical
+  - Hitbox
+  - Team1
+  - Team2
+  - Spectator
   layers:
   - Default
   - TransparentFX
@@ -15,13 +20,13 @@ TagManager:
   - Local_Player
   - Net_Player
   - Ledge
-  - PlayerCharacter
-  - YuME_TileMap
+  - PlayerCharacter_Team1
+  - PlayerCharacter_Team2
   - ObjectiveItem
   - Hands
-  - 
-  - 
-  - 
+  - CharacterHitbox_Team1
+  - CharacterHitbox_Team2
+  - LocalPlayer
   - 
   - 
   - 

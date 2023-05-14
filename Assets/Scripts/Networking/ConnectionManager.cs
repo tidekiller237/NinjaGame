@@ -92,16 +92,24 @@ public class ConnectionManager : NetworkBehaviour
         {
             connectedPlayersIds.Clear();
             connectedPlayersNames.Clear();
+
+            for(int i = 0; i < 8; i++)
+            {
+                connectedPlayersIds.Add(ulong.MaxValue);
+                connectedPlayersNames.Add("");
+            }
         }
 
         AddPlayer(clientId);
         EvaluateSceneState(clientId);
+        UpdateTeams();
     }
 
     public void OnClientDisconnectedListener(ulong clientId)
     {
         if(!IsServer) return;
         RemovePlayer(clientId);
+        UpdateTeams();
     }
 
     private void EvaluateSceneState(ulong clientId)
@@ -223,8 +231,11 @@ public class ConnectionManager : NetworkBehaviour
         return new RelayServerData(allocation, "dtls");
     }
 
-    public void SetPlayerName(string playerName)
+    public void SetPlayerIdAndName(ulong playerId, string playerName)
     {
+        //set player id
+        NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().SetId(playerId);
+
         //set player name
         NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().SetName(playerName);
     }
@@ -237,8 +248,11 @@ public class ConnectionManager : NetworkBehaviour
     {
         if (connectedPlayersIds.Contains(clientId)) return;
 
-        connectedPlayersIds.Add(clientId);
-        connectedPlayersNames.Add(NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value);
+        int index = connectedPlayersIds.IndexOf(ulong.MaxValue);
+        connectedPlayersIds[index] = clientId;
+        connectedPlayersNames[index] = NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value;
+        //connectedPlayersIds.Add(clientId);
+        //connectedPlayersNames.Add(NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.Value);
         NetworkManager.ConnectedClients[clientId].PlayerObject.GetComponent<NetworkPlayer>().playerName.OnValueChanged += UpdatePlayerName;
     }
 
@@ -247,8 +261,11 @@ public class ConnectionManager : NetworkBehaviour
         if (!connectedPlayersIds.Contains(clientId)) return;
 
         int index = connectedPlayersIds.IndexOf(clientId);
-        connectedPlayersIds.RemoveAt(index);
-        connectedPlayersNames.RemoveAt(index);
+        connectedPlayersIds[index] = ulong.MaxValue;
+        connectedPlayersNames[index] = "";
+        //connectedPlayersIds.RemoveAt(index);
+        //connectedPlayersIds.Insert(index, ulong.MaxValue);
+        //connectedPlayersNames.RemoveAt(index);
     }
 
     private void UpdatePlayerName(FixedString64Bytes oldValue, FixedString64Bytes newValue)
@@ -303,12 +320,39 @@ public class ConnectionManager : NetworkBehaviour
 
             for(int i = 0; i < connectedPlayersIds.Count; i++)
             {
+                if (connectedPlayersIds[i] == ulong.MaxValue) continue;
+
                 if (!NetworkManager.ConnectedClients[connectedPlayersIds[i]].PlayerObject.GetComponent<NetworkPlayer>().levelLoaded.Value)
                     check = false;
             }
         }
 
         waitingForPlayers.Value = false;
+    }
+
+    #endregion
+
+    #region Teams
+
+    public void UpdateTeams()
+    {
+        for(int i = 0; i < connectedPlayersIds.Count; i++)
+        {
+            if (connectedPlayersIds[i] < ulong.MaxValue)
+            {
+                ulong targetClient = connectedPlayersIds[i];
+                ulong playerNetworkPlayerId = NetworkManager.ConnectedClients[targetClient].PlayerObject.NetworkObjectId;
+
+                if (i % 2 == 0)
+                {
+                    NetworkManager.ConnectedClients[connectedPlayersIds[i]].PlayerObject.GetComponent<NetworkPlayer>().AssignTeamClientRpc(targetClient, playerNetworkPlayerId, 1);
+                }
+                else
+                {
+                    NetworkManager.ConnectedClients[connectedPlayersIds[i]].PlayerObject.GetComponent<NetworkPlayer>().AssignTeamClientRpc(targetClient, playerNetworkPlayerId, 2);
+                }
+            }
+        }
     }
 
     #endregion

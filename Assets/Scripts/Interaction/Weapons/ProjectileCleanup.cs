@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
 
-public class ProjectileCleanup : NetworkBehaviour
+public class ProjectileCleanup : MonoBehaviour
 {
     public float lifeTime;
     public Weapon weapon;
@@ -15,17 +15,6 @@ public class ProjectileCleanup : NetworkBehaviour
 
     private void CleanUp()
     {
-        if (!IsOwner) return;
-
-        if (GetComponent<NetworkObject>() != null)
-            CleanUpServerRPC();
-        else
-            weapon.DestroyLocalProjectile(gameObject);
-    }
-
-    [ServerRpc]
-    private void CleanUpServerRPC()
-    {
-        GetComponent<NetworkObject>().Despawn();
+        weapon.DestroyProjectile(gameObject);
     }
 }

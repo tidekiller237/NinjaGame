@@ -8,4 +8,14 @@ public static class Database
     {
         return Resources.Load<GameObject>($"Characters/{name}");
     }
+
+    public static GameObject LoadProjectile(string directory, string name)
+    {
+        return Resources.Load<GameObject>($"Projectiles/{directory}/{name}");
+    }
+
+    public static GameObject LoadParticleSystem(string directory, string name)
+    {
+        return Resources.Load<GameObject>($"ParticleSystems/{directory}/{name}");
+    }
 }

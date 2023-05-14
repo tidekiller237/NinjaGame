@@ -1,21 +1,26 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class BasicWeapon : Weapon
 {
-    public bool melee;
-    Animator animator;
-
     [Header("Projectile")]
     public GameObject rangedWeapon;
-    public GameObject projectile_Network;
-    public GameObject projectile_Local;
+    public string primaryProjectileDirectory;
+    public string primaryProjectile_Network;
+    public string primaryProjectile_Local;
+    public string secondaryProjectileDirectory;
+    public string secondaryProjectile_Network;
+    public string secondaryProjectile_Local;
+    public string secondaryExplosionDirectory;
+    public string secondaryExplosionPrefab;
     public Transform projectileSpawnPoint;
     public LayerMask notPlayerMask;
 
     [Header("Primary Fire")]
-    public bool enablePrimaryFire;
+    //public bool enablePrimaryFire;
     public int primaryDamage;
     public float primarySpawnCameraOffset;
     public float primaryForwardForce;
@@ -26,25 +31,38 @@ public class BasicWeapon : Weapon
     float primaryFireVisualResetTimer;
     bool primaryVisualResetting;
 
+    [Header("Secondary Fire")]
+    //public bool enableSecondaryFire;
+    public int secondaryExplosionDamage;
+    public float secondaryExplosionRadius;
+    public float secondaryExplosionTriggerTime;
+    public float secondaryFireCooldown;
+    public float secondaryCooldownTime;
+    bool canSecondaryFire;
+
     [Header("Melee")]
     public bool enableMelee;
     public GameObject meleeWeapon;
 
     [Header("Melee Primary")]
-    public bool enableMeleePrimary;
+    //public bool enableMeleePrimary;
     public int meleePrimaryDamage;
     public float meleePrimarySwingDuration;
-    public float meleePrimaryOffset;
-    public Vector3 meleePrimaryBounds;
+    public float meleePrimaryDistance;
+    public float meleePrimaryRadius;
     public float meleePrimaryCooldown;
     bool meleeCheck;
-    List<Collider> hitTargets = new List<Collider>();
+    List<GameObject> hitTargets = new List<GameObject>();
     bool canMeleePrimary;
+
+    [Header("Weapon Swap")]
+    public float swapDelay;
 
     protected override void Awake()
     {
         base.Awake();
         melee = false;
+        visual = true;
     }
 
     private void Start()
@@ -53,8 +71,11 @@ public class BasicWeapon : Weapon
 
         projectileSpawnPoint = GameObject.Find("ProjectileTransform").transform;
         canPrimaryFire = enablePrimaryFire;
+        canSecondaryFire = enableSecondaryFire;
         canMeleePrimary = enableMeleePrimary;
-        animator = GetComponentInParent<Animator>();
+
+        rangedWeapon.layer = LayerMask.NameToLayer("Hands");
+        meleeWeapon.layer = LayerMask.NameToLayer("Hands");
     }
 
     protected override void Update()
@@ -62,18 +83,23 @@ public class BasicWeapon : Weapon
         if (!IsOwner) return;
 
         base.Update();
+        firstPersonWeaponParent.SetActive(visual);
 
-        if (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller != null)
+        if (NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller != null && controller != null)
         {
-            animator.SetBool("Melee", melee);
+            if (!controller.GetComponent<HealthManager>().IsAlive || !controller.Control) return;
 
-            transform.position = GetComponentInParent<PlayerController>().mainCamera.transform.position;
-            transform.rotation = GetComponentInParent<PlayerController>().mainCamera.transform.rotation;
-            meleeWeapon.transform.position = transform.position + Vector3.up * -500f;
-            rangedWeapon.transform.position = transform.position + Vector3.up * -500f;
+            //transform.position = GetComponentInParent<PlayerController>().mainCamera.transform.position;
+            //transform.rotation = GetComponentInParent<PlayerController>().mainCamera.transform.rotation;
+            //meleeWeapon.transform.position = transform.position + Vector3.up * -500f;
+            //rangedWeapon.transform.position = transform.position + Vector3.up * -500f;
+
+            //handle cooldowns
+            HandleCooldowns();
 
             //handle inputs
-            GetInputs();
+            if(Control)
+                GetInputs();
 
             if (melee)
             {
@@ -99,21 +125,11 @@ public class BasicWeapon : Weapon
         }
     }
 
-    private void ResetAnimatorTriggers()
-    {
-        animator.ResetTrigger("MeleePrimary");
-        animator.ResetTrigger("RangedPrimary");
-        animator.ResetTrigger("RangedReset");
-        animator.ResetTrigger("WeaponSwap");
-    }
-
     private void GetInputs()
     {
-        if (Input.GetKeyDown(GameManager.bind_swapWeapon))
+        if (Input.GetKeyDown(GameManager.bind_swapWeapon) || Input.GetAxis("Mouse ScrollWheel") != 0)
         {
-            melee = !melee;
-            ResetAnimatorTriggers();
-            animator.SetTrigger("WeaponSwap");
+            SwapWeapon();
         }
 
         if (melee)
@@ -125,24 +141,45 @@ public class BasicWeapon : Weapon
         {
             if (enablePrimaryFire && canPrimaryFire && Input.GetKey(GameManager.bind_primaryFire))
                 PrimaryFire();
+            else if (enableSecondaryFire && canSecondaryFire && Input.GetKey(GameManager.bind_secondaryFire))
+                SecondaryFire();
         }
     }
 
-    private void DestroyAllProjectiles()
+    private void HandleCooldowns()
     {
-        if (projDict.Count == 0) return;
-
-        foreach (var obj in projDict)
+        //secondary fire cooldown
+        if (secondaryCooldownTime < secondaryFireCooldown)
         {
-            if (obj.Value != null)
-            {
-                DestroyProjectileServerRPC(obj.Value.GetComponent<ProjectileBalistics>().netId);
-                DestroyLocalProjectile(obj.Value);
-            }
+            canSecondaryFire = false;
+            secondaryCooldownTime += Time.deltaTime;
+            secondaryCooldownTime = Mathf.Min(secondaryCooldownTime, secondaryFireCooldown);
         }
-
-        projDict.Clear();
+        else
+            canSecondaryFire = true;
     }
+
+    private void SwapWeapon()
+    {
+        melee = !melee;
+        canMeleePrimary = false;
+        canPrimaryFire = false;
+        canSecondaryFire = false;
+
+        CancelInvoke();
+        Invoke(nameof(SwapWeaponEnd), (melee) ? meleePrimaryCooldown : primaryFireCooldown);
+    }
+
+    private void SwapWeaponEnd()
+    {
+        canMeleePrimary = true;
+        canPrimaryFire = true;
+        canSecondaryFire = true;
+    }
+
+    #region Ranged Weapon
+
+    // PRIMARY FIRE
 
     private void PrimaryFire()
     {
@@ -152,14 +189,13 @@ public class BasicWeapon : Weapon
         Vector3 dir = cam.transform.forward;
         Vector3 force = dir * primaryForwardForce + transform.up * primaryUpForce;
 
-        GameObject instance = PrimaryFireLocal(spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
+        GameObject instance = FireProjectileLocal(primaryProjectileDirectory, primaryProjectile_Local, spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force, PrimaryOnImpact);
         projDict.Add(instance.GetInstanceID(), instance);
-        PrimaryFireServerRPC(OwnerClientId, instance.GetInstanceID(), spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
+        FireProjectileNetwork(instance.GetInstanceID(), primaryProjectileDirectory, primaryProjectile_Network, spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
 
         Invoke(nameof(ResetPrimaryFire), primaryFireCooldown);
 
-        ResetAnimatorTriggers();
-        animator.SetTrigger("RangedPrimary");
+        OnAttack.Invoke();
     }
 
     private void ResetPrimaryFire()
@@ -171,29 +207,105 @@ public class BasicWeapon : Weapon
 
     private void ResetPrimaryFireVisual()
     {
-        ResetAnimatorTriggers();
-        animator.SetTrigger("RangedReset");
         primaryVisualResetting = false;
     }
 
-    public void PrimaryOnImpact(GameObject context, Collider collider)
+    public void PrimaryOnImpact(GameObject context, Collider collider, RaycastHit hit)
     {
-        if (collider.CompareTag("Player") && collider.GetComponent<HealthManager>().IsAlive
-            && collider.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character)
+        if (collider.tag.Contains("Hitbox"))
         {
-            UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.15f);
-            DestroyProjectileServerRPC(context.GetComponent<ProjectileBalistics>().netId);
-            DestroyLocalProjectile(context);
+            if (collider.transform.root.tag != transform.root.tag && collider.transform.root.GetComponent<HealthManager>().IsAlive
+                && collider.transform.root.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character)
+            {
+                DestroyProjectile(context);
+                DealDamageToTarget(collider.transform.root.GetComponent<NetworkObject>().NetworkObjectId, collider.CompareTag("Hitbox_Critical") ? primaryDamage * 2 : primaryDamage);
+                context.GetComponent<ProjectileImpact>().targetHit = true;
+            }
         }
         else
         {
-            context.GetComponent<Rigidbody>().constraints = RigidbodyConstraints.FreezeAll;
-            context.GetComponent<Collider>().enabled = false;
+            context.GetComponent<ProjectileImpact>().targetHit = true;
+        }
+    }
+
+    // SECONDARY FIRE
+
+    private void SecondaryFire()
+    {
+        secondaryCooldownTime = 0f;
+
+        CameraController cam = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller.mainCamera;
+        Vector3 spawnLocation = cam.transform.position + cam.transform.forward * primarySpawnCameraOffset;
+        Vector3 dir = cam.transform.forward;
+        Vector3 force = dir * primaryForwardForce + transform.up * primaryUpForce;
+
+        GameObject instance = FireProjectileLocal(secondaryProjectileDirectory, secondaryProjectile_Local, spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force, SecondaryOnImpact);
+        projDict.Add(instance.GetInstanceID(), instance);
+        FireProjectileNetwork(instance.GetInstanceID(), secondaryProjectileDirectory, secondaryProjectile_Network, spawnLocation, projectileSpawnPoint.position, cam.transform.rotation, force);
+
+        OnAttack.Invoke();
+    }
+
+    public void SecondaryOnImpact(GameObject context, Collider collider, RaycastHit hit)
+    {
+        if (collider.tag.Contains("Hitbox"))
+        {
+            if (collider.transform.root.tag != transform.root.tag && collider.transform.root.GetComponent<HealthManager>().IsAlive
+                && collider.transform.root.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character)
+            {
+                //UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.15f);
+                //DestroyProjectile(context);
+                DealDamageToTarget(collider.transform.root.GetComponent<NetworkObject>().NetworkObjectId, collider.CompareTag("Hitbox_Critical") ? primaryDamage * 2 : primaryDamage);
+                context.GetComponent<ProjectileImpact>().targetHit = true;
+
+                //trigger effect if hit player
+                SecondaryOnTrigger(context);
+            }
+        }
+        else
+        {
+            //context.GetComponent<Rigidbody>().constraints = RigidbodyConstraints.FreezeAll;
+            //context.GetComponent<Rigidbody>().velocity = Vector3.zero;
+            //context.GetComponent<Collider>().enabled = false;
+            //context.GetComponent<ProjectileImpact>().targetHit = true;
+
+            //set effect to trigger when hitting anything else
+            //context.transform.position = hitPoint - context.transform.forward * 0.1f;
+            context.GetComponent<ExplosiveKunai>().OnTrigger.AddListener(SecondaryOnTrigger);
+            context.GetComponent<ExplosiveKunai>().SetTrigger(secondaryExplosionTriggerTime);
+        }
+    }
+
+    public void SecondaryOnTrigger(GameObject context)
+    {
+        Vector3 explosionOrigin = context.transform.position - context.transform.forward * 0.1f;
+
+        //trigger visual
+        SpawnParticleSystemLocal(secondaryExplosionDirectory, secondaryExplosionPrefab, explosionOrigin);
+        SpawnParticleSystemNetwork(secondaryExplosionDirectory, secondaryExplosionPrefab, explosionOrigin);
+
+        //process effect
+        Collider[] colliders = Physics.OverlapSphere(explosionOrigin, secondaryExplosionRadius);
+        List<GameObject> hitList = new List<GameObject>();
+
+        foreach(Collider col in colliders)
+        {
+            if(col.tag.Contains("Hitbox") && !hitList.Contains(col.transform.root.gameObject) && !col.CompareTag(transform.root.tag)
+                && col.transform.root.GetComponent<HealthManager>().IsAlive)
+            {
+                if (!Physics.Raycast(explosionOrigin, col.transform.root.position, Vector3.Distance(explosionOrigin, col.transform.root.position), notPlayerMask))
+                {
+                    GameObject root = col.transform.root.gameObject;
+                    DealDamageToTarget(root.GetComponent<NetworkObject>().NetworkObjectId, secondaryExplosionDamage);
+                    hitList.Add(root);
+                }
+            }
         }
 
-        if(collider.GetComponent<NetworkObject>() != null && collider.GetComponent<HealthManager>() != null)
-            DealDamageToTargetServerRPC(OwnerClientId, collider.GetComponent<NetworkObject>().NetworkObjectId, primaryDamage);
+        DestroyProjectile(context);
     }
+
+    #endregion
 
     #region Melee Weapon
 
@@ -204,8 +316,7 @@ public class BasicWeapon : Weapon
         Invoke(nameof(MeleeStop), meleePrimarySwingDuration);
         Invoke(nameof(ResetMeleePrimary), meleePrimaryCooldown);
 
-        ResetAnimatorTriggers();
-        animator.SetTrigger("MeleePrimary");
+        OnAttack.Invoke();
     }
 
     private void ResetMeleePrimary()
@@ -227,93 +338,17 @@ public class BasicWeapon : Weapon
     private void MeleePrimaryImpactCheck()
     {
         PlayerController controller = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().controller;
-        Collider[] hits = MeleeCheck(controller.mainCamera.transform.position + controller.mainCamera.transform.forward * meleePrimaryOffset, meleePrimaryBounds);
+        GameObject[] hits = MeleeCheck(controller.mainCamera.transform, meleePrimaryDistance, meleePrimaryRadius);
         bool check = false;
 
-        foreach (Collider collider in hits)
+        foreach (GameObject obj in hits)
         {
-            if (collider.GetComponent<NetworkObject>() != null && collider.GetComponent<HealthManager>() != null && !hitTargets.Contains(collider)
-                && collider.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character)
+            if (!hitTargets.Contains(obj) && obj.gameObject != NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<NetworkPlayer>().character && obj.tag != transform.root.tag)
             {
                 check = true;
-                DealDamageToTargetServerRPC(OwnerClientId, collider.GetComponent<NetworkObject>().NetworkObjectId, meleePrimaryDamage);
-                hitTargets.Add(collider);
+                DealDamageToTarget(obj.transform.root.GetComponent<NetworkObject>().NetworkObjectId, meleePrimaryDamage);
+                hitTargets.Add(obj);
             }
-        }
-
-        if(check)
-            UIManager.Instance.UI_HUD.GetComponent<UI_HUDManager>().DisplayHitmarker(0.15f);
-    }
-
-    private Collider[] MeleeCheck(Vector3 position, Vector3 bounds)
-    {
-        Collider[] cols = Physics.OverlapBox(position, bounds / 2f);
-        List<Collider> result = new List<Collider>();
-
-        foreach (Collider col in cols)
-        {
-            if (col.CompareTag("Player") && col.GetComponent<HealthManager>().IsAlive)
-                result.Add(col);
-        }
-
-        return result.ToArray();
-    }
-
-    #endregion
-
-    #region Network
-
-    private GameObject PrimaryFireLocal(Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
-    {
-        GameObject instance = Instantiate(projectile_Local, spawn, orientation);
-        Rigidbody instantceRb = instance.GetComponent<Rigidbody>();
-        instance.GetComponent<ProjectileBalistics>().SetSpawnPosition(visualSpawn);
-        instance.GetComponent<ProjectileInpact>().OnImpact.AddListener(PrimaryOnImpact);
-        instantceRb.AddForce(force, ForceMode.Impulse);
-        return instance;
-    }
-
-    [ServerRpc]
-    private void PrimaryFireServerRPC(ulong clientId, int localId, Vector3 spawn, Vector3 visualSpawn, Quaternion orientation, Vector3 force)
-    {
-        GameObject netInstance = Instantiate(projectile_Network, spawn, orientation);
-        Rigidbody instantceRb = netInstance.GetComponent<Rigidbody>();
-        netInstance.GetComponent<NetworkObject>().Spawn();
-        instantceRb.AddForce(force, ForceMode.Impulse);
-        netInstance.GetComponent<ProjectileBalistics>().SetSpawnPosition(visualSpawn);
-        DisableNetworkProjectileClientRPC(clientId, netInstance.GetComponent<NetworkObject>().NetworkObjectId, localId);
-    }
-
-    [ServerRpc]
-    private void DestroyProjectileServerRPC(ulong objectId)
-    {
-        GetNetworkObject(objectId).Despawn();
-    }
-
-    [ServerRpc]
-    private void DealDamageToTargetServerRPC(ulong client, ulong objectId, int damage)
-    {
-        NetworkObject target = GetNetworkObject(objectId);
-        if(target.GetComponent<HealthManager>() != null)
-        {
-            target.GetComponent<HealthManager>().Damage(damage);
-        }
-    }
-
-    [ClientRpc]
-    private void DisableNetworkProjectileClientRPC(ulong clientId, ulong netObjectId, int localId)
-    {
-        if(IsOwner && OwnerClientId == clientId)
-        {
-            NetworkObject netObject = GetNetworkObject(netObjectId);
-            foreach (Transform child in netObject.transform)
-                child.gameObject.SetActive(false);
-            netObject.GetComponent<Collider>().enabled = false;
-            GameObject localInstance;
-            projDict.TryGetValue(localId, out localInstance);
-
-            if (localInstance == null) return;
-            localInstance.GetComponent<ProjectileBalistics>().netId = netObjectId;
         }
     }
 

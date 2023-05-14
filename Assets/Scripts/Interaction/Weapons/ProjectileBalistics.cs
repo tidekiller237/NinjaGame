@@ -6,7 +6,7 @@ public class ProjectileBalistics : MonoBehaviour
 {
     Rigidbody rb;
 
-    public Transform visualComponent;
+    public GameObject visualComponent;
     public float visualSpeed;
     public ulong netId;
 
@@ -39,14 +39,14 @@ public class ProjectileBalistics : MonoBehaviour
         else
             currentPos = transform.position;
 
-        visualComponent.position = currentPos;
+        visualComponent.transform.position = currentPos;
     }
 
     public void SetSpawnPosition(Vector3 position)
     {
         currentPos = position;
         startPos = position;
-        visualComponent.position = startPos;
+        visualComponent.transform.position = startPos;
         visualComponent.GetComponentInChildren<TrailRenderer>().enabled = true;
     }
 }

@@ -1,18 +1,27 @@
 using System.Collections;
-using System.Collections.Generic;
+using Unity.Netcode;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Events;
-using Unity.Netcode;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : NetworkBehaviour
 {
-    Rigidbody rb;
+    public int Team { get; private set; }
+
+    public Rigidbody rb;
+    public StatusEffects statusEffects;
 
     public bool Control { get; private set; }
     public bool restrictMovement;
 
-    public GameObject visor;
+    public GameObject[] firstPersonViewObjects;
+    public GameObject[] thirdPersonViewObjects;
+
+    public GameObject model;
+
+    [Header("Game Management")]
+    public string characterName;
 
     [Header("Camera")]
     public CameraController mainCamera;
@@ -21,7 +30,7 @@ public class PlayerController : NetworkBehaviour
     [Header("Movement")]
     public bool enableMovement;
     public MovementState moveState;
-    public float walkSpeed;
+    float walkSpeed;
     float moveSpeed;
     float desiredMoveSpeed;
     float lastDesiredMoveSpeed;
@@ -44,16 +53,33 @@ public class PlayerController : NetworkBehaviour
 
     [Header("Crouching")]
     public bool enableCrouch;
-    public float crouchSpeed;
+    public float crouchSpeedMultiplier;
     public float crouchYScale;
     public bool crouchToggle;
+    public bool crouching;
     float startYScale;
-    bool crouching;
+    float crouchSpeed;
 
     [Header("Slope Handling")]
     public float maxSlopeAngle;
     public float slopeDownForce;
     RaycastHit slopeHit;
+
+    [Header("Dash")]
+    public GameObject dashTrail;
+    public bool enableDash;
+    public float dashCooldown;
+    public float dashSpeedMultiplier;
+    public float dashDuration;
+    public bool canDash;
+    bool dashReset;
+    bool dashing;
+    float dashSpeed;
+    Vector3 dashInput;
+
+    public UnityEvent OnDash = new UnityEvent();
+
+    public float DashCooldownTime { get; private set; }
 
     [Header("WallRunning")]
     public bool enableWallRun;
@@ -68,13 +94,17 @@ public class PlayerController : NetworkBehaviour
     public float wallRunCamTilt;
     public float wallRunCamFOVTransition;
     public float wallRunCamTiltTransition;
+    public float minWallRunChangeDistance;
+    public float minWallRunChangeAngle;
     float wallRunTimer;
     RaycastHit leftWallHit;
     RaycastHit rightWallHit;
+    RaycastHit lastWallRan;
     bool wallLeft;
     bool wallRight;
     bool wallRunning;
     bool wallRan;
+    bool wallRunExit;
 
     [Header("Climbing")]
     public bool enableClimbing;
@@ -151,21 +181,27 @@ public class PlayerController : NetworkBehaviour
     public float regularGravity;
     public float downForceGravity;
     public float downForceSpeedThreshold;
-    public bool gravityEnabled;
+    [HideInInspector] public bool gravityEnabled;
+    [HideInInspector] public bool dragEnabled;
+    [HideInInspector] public bool speedLimitEnabled;
 
-    [Header("Abilities")]
-    public Ability ability1;
-
-    bool moveAbility;
+    [HideInInspector] public bool hasControl;
 
     [Header("Weapon")]
     public GameObject weaponHolder;
-    Weapon weapon1;
+    Weapon weapon;
+    public Weapon Weapon { get { return weapon; } }
 
-    //public UnityEvent PrimaryRangedTrigger1;
-    //public UnityEvent PrimaryRangedTrigger2;
-    //public UnityEvent PrimaryMeleeTrigger1;
-    //public UnityEvent PrimaryMeleeTrigger2;
+    [Header("Class")]
+    public GameObject classHolder;
+    Class playerClass;
+    public Class PlayerClass { get { return playerClass; } }
+
+    [Header("Abilities")]
+    public GameObject abilityHolder;
+    Ability ability;
+    public Ability Ability { get { return ability; } }
+    public bool moveAbility;
 
     public enum MovementState
     {
@@ -185,23 +221,49 @@ public class PlayerController : NetworkBehaviour
     public bool IsWallrunning { get { return wallRunning; } }
     public bool MovementOverride { get; set; }
 
+    private void Awake()
+    {
+        mainCamera = Camera.main.GetComponent<CameraController>();
+        weapon = weaponHolder.GetComponent<Weapon>();
+        playerClass = classHolder.GetComponent<Class>();
+        ability = abilityHolder.GetComponent<Ability>();
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+        statusEffects = GetComponent<StatusEffects>();
+    }
+
     private void Start()
     {
         if (!IsOwner) return;
 
-        visor.SetActive(false);
+        walkSpeed = GameManager.Instance.playerWalkSpeed;
+        crouchSpeed = walkSpeed * crouchSpeedMultiplier;
+        climbSpeed = walkSpeed;
+        climbForce = climbSpeed * 2;
+        wallRunSpeed = walkSpeed;
+        dashSpeed = walkSpeed * dashSpeedMultiplier;
+
+        for (int i = 0; i < firstPersonViewObjects.Length; i++)
+            firstPersonViewObjects[i].SetActive(true);
+
+        for (int i = 0; i < thirdPersonViewObjects.Length; i++)
+            thirdPersonViewObjects[i].SetActive(false);
+
+        gameObject.layer = LayerMask.NameToLayer("LocalPlayer");
+        SetHitboxLayer("LocalPlayer", model, 15);
+        GetComponent<CapsuleCollider>().enabled = true;
 
         Control = true;
-        mainCamera = Camera.main.GetComponent<CameraController>();
-        weapon1 = weaponHolder.GetComponent<Weapon>();
-        rb = GetComponent<Rigidbody>();
-        rb.freezeRotation = true;
         startYScale = transform.localScale.y;
         playerHeight = GetComponent<CapsuleCollider>().height;
         canJump = true;
+        canDash = true;
         exitingWall = false;
-        gravityEnabled = true;
+        wallRunExit = false;
+        DashCooldownTime = dashCooldown;
         InitializeAbilities();
+        InitializeStatusEffects();
+        ReturnControl();
 
         //TODO: spawn at random for now
         GetComponent<SpawnHandler>().SpawnAtRandom();
@@ -209,28 +271,70 @@ public class PlayerController : NetworkBehaviour
 
     private void InitializeAbilities()
     {
-        if(weapon1 != null)
+        if(weapon != null)
         {
-            weapon1.Activated = true;
+            weapon.Activated = true;
+            weapon.controller = this;
         }
 
-        if (ability1 != null)
+        if(playerClass != null)
         {
-            ability1.Activated = true;
+            playerClass.Activated = true;
+            playerClass.controller = this;
+
+            if (ability != null)
+            {
+                ability.Activated = true;
+                ability.Controller = this;
+                ability.PlayerClass = playerClass;
+                ability.PlayerWeapon = weapon;
+            }
         }
+    }
+
+    private void InitializeStatusEffects()
+    {
+        statusEffects.OnRoot.AddListener(() => {
+            rb.velocity = new(0f, rb.velocity.y, 0f);
+        });
+
+        statusEffects.OnHover.AddListener(() => { rb.velocity = Vector3.zero; });
+    }
+
+    private void SetHitboxLayer(string layerName, GameObject obj, int maxRecursion)
+    {
+        if (obj == null || maxRecursion == 0)
+            return;
+
+        obj.layer = LayerMask.NameToLayer(layerName);
+        maxRecursion -= 1;
+
+        foreach (Transform child in obj.transform)
+            SetHitboxLayer(layerName, child.gameObject, maxRecursion);
     }
 
     private void Update()
     {
-        if(!IsOwner && handCam.gameObject.activeInHierarchy)
-            handCam.gameObject.SetActive(false);
         if (!IsOwner) return;
 
-        handCam.transform.position = mainCamera.transform.position;
-        handCam.transform.rotation = mainCamera.transform.rotation;
+        handCam.transform.parent.position = mainCamera.transform.position;
+        handCam.transform.parent.rotation = mainCamera.transform.rotation;
 
         ControlHandler();
         if (!Control) return;
+
+        #region Debugging (Delete)
+
+        if (Input.GetKeyDown(KeyCode.J))
+            statusEffects.Stun(5f);
+
+        if (Input.GetKeyDown(KeyCode.K))
+            statusEffects.Root(5f);
+
+        if (Input.GetKeyDown(KeyCode.L))
+            statusEffects.Hover(5f);
+
+        #endregion
 
         bool lastGrounded = grounded;
         Vector3 lastVelocity = new(rb.velocity.x, 0f, rb.velocity.z);
@@ -242,12 +346,11 @@ public class PlayerController : NetworkBehaviour
         WallCheck();
         ClimbWallCheck();
         LedgeDetection();
-        SpeedControl();
-        StateHandler();
         GetInput();
+        StateHandler();
 
         //apply drag
-        if (grounded)
+        if (dragEnabled && grounded && !dashing && !statusEffects.slippery)
             rb.drag = GamePhysics.KineticFriction;
         else
             rb.drag = 0f;
@@ -256,20 +359,46 @@ public class PlayerController : NetworkBehaviour
             rb.velocity = lastVelocity;
 
         //reset jumps
-        if (grounded)
+        if (grounded || wallRunning || climbing)
             jumpCount = 0;
 
+        //wallrunning movement state
         wallRunning = moveState == MovementState.WallRunning;
 
+        //reset wallrun camera tilt
         if (wallRunning)
+        {
             wallRan = true;
+            UpdateLastWallRan();
+        }
         else if (mainCamera.transform.localRotation.z != 0)
             mainCamera.ResetTilt(wallRunCamTiltTransition);
 
-        if (wallRan && grounded)
-            mainCamera.ResetFOV(wallRunCamFOVTransition);
+        //stop the wall running, only if you ran on the wall
+        if (wallRan && !wallRunExit && !wallRunning)
+            StopWallRun();
 
-        mainCamera.speed = (Mathf.Max(rb.velocity.magnitude, walkSpeed) - walkSpeed) * 2f;
+        //reset the wall ran variable
+        if (wallRan && grounded)
+        {
+            mainCamera.ResetFOV(wallRunCamFOVTransition);
+            wallRan = false;
+        }
+
+        //end exiting a wallrun
+        if (wallRunExit && grounded)
+            wallRunExit = false;
+
+        //visual for dash
+        if(DashCooldownTime < dashCooldown)
+        {
+            DashCooldownTime += Time.deltaTime;
+            DashCooldownTime = Mathf.Min(DashCooldownTime, dashCooldown);
+        }
+
+        //reset dash
+        if (!canDash && dashReset && (grounded || wallRunning || climbing))
+            canDash = true;
     }
 
     private void FixedUpdate()
@@ -277,56 +406,67 @@ public class PlayerController : NetworkBehaviour
         if (!IsOwner) return;
 
         if (enableMovement && moveState != MovementState.Ability)
-            MovePlayer();
+        {
+            if(!dashing)
+                MovePlayer();
+            else
+                Dash();
+
+            SpeedControl();
+        }
+
         SpecialGravity();
     }
+
+    #region Teams
+
+    [ServerRpc]
+    public void SetTeamServerRpc(int team)
+    {
+        SetTeamClientRpc(team);
+    }
+
+    [ClientRpc]
+    public void SetTeamClientRpc(int team)
+    {
+        SetTeam(team);
+    }
+
+    public void SetTeam(int team)
+    {
+        if(team == 1)
+        {
+            Team = team;
+            gameObject.tag = GameManager.tag_team1;
+        }
+        else if(team == 2)
+        {
+            Team = team;
+            gameObject.tag = GameManager.tag_team2;
+        }
+        else if(team == -1)
+        {
+            Team = team;
+            gameObject.tag = GameManager.tag_spectator;
+        }
+    }
+
+    #endregion
 
     #region Input Handling
 
     private void GetInput()
     {
-        if (Input.GetKeyDown(GameManager.bind_kill))
-            KillBindServerRpc(OwnerClientId, NetworkObjectId);
-
-        horizontalInput = Input.GetAxisRaw("Horizontal");
-        verticalInput = Input.GetAxisRaw("Vertical");
-
-        //jumping
-        if(canJump)
+        if (restrictMovement || statusEffects.stunned)
         {
-            if (enableJump && Input.GetKeyDown(GameManager.bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && (!climbing || climbStopping) && !ledgeGrabbed)
-            {
-                canJump = false;
-                Jump();
-
-                Invoke(nameof(ResetJump), jumpCoodown);
-
-                if (climbStopping)
-                    SecondClimbStop();
-            } 
-            else if (enableWallRun && Input.GetKeyDown(GameManager.bind_jump) && wallRunning)
-            {
-                canJump = false;
-                WallJump();
-
-                Invoke(nameof(ResetJump), jumpCoodown);
-            }
-            else if(enableLedgeJump && Input.GetKeyDown(GameManager.bind_jump) && ledgeGrabbed && !exitingWall)
-            {
-                canJump = false;
-                LedgeJump();
-
-                Invoke(nameof(ResetJump), jumpCoodown);
-            }
-            else if(enableClimbJump && Input.GetKeyDown(GameManager.bind_jump) && wallFront && climbJumpsLeft > 0 && !exitingWall)
-            {
-                canJump = false;
-                ClimbJump();
-
-                Invoke(nameof(ResetJump), jumpCoodown);
-            }
+            horizontalInput = 0f;
+            verticalInput = 0f;
+            return;
         }
 
+        if (Input.GetKeyDown(GameManager.bind_kill))
+            KillBindServerRpc(OwnerClientId, NetworkObjectId);
+        
         //crouching
         if (enableCrouch)
         {
@@ -356,6 +496,61 @@ public class PlayerController : NetworkBehaviour
                 }
             }
         }
+
+        if(statusEffects.rooted)
+        {
+            horizontalInput = 0f;
+            verticalInput = 0f;
+            return;
+        }
+
+        horizontalInput = Input.GetAxisRaw("Horizontal");
+        verticalInput = Input.GetAxisRaw("Vertical");
+
+        if (statusEffects.hovered) return;
+
+        //jumping
+        if(canJump)
+        {
+            if (enableJump && Input.GetKeyDown(GameManager.bind_jump) && jumpCount < maxJumps - 1 && !wallRunning && (!climbing || climbStopping) && !ledgeGrabbed)
+            {
+                canJump = false;
+                Jump();
+
+                Invoke(nameof(ResetJump), jumpCoodown);
+
+                if (climbStopping)
+                    SecondClimbStop();
+            } 
+            else if (enableWallRun && Input.GetKeyDown(GameManager.bind_jump) && wallRunning)
+            {
+                canJump = false;
+                WallJump();
+
+                Invoke(nameof(ResetJump), jumpCoodown);
+            }
+            else if(enableLedgeJump && Input.GetKeyDown(GameManager.bind_jump) && ledgeGrabbed && !exitingWall)
+            {
+                canJump = false;
+                LedgeJump();
+
+                Invoke(nameof(ResetJump), jumpCoodown);
+            }
+            else if(enableClimbJump && Input.GetKeyDown(GameManager.bind_jump) && wallFront && !exitingWall)
+            {
+                canJump = false;
+                ClimbJump();
+
+                Invoke(nameof(ResetJump), jumpCoodown);
+            }
+        }
+
+        //dashing
+        if (enableDash && canDash)
+        {
+            if (Input.GetKeyDown(GameManager.bind_abilityShift) && !crouching)
+                StartDash();
+        }
     }
 
     private void StateHandler()
@@ -373,19 +568,19 @@ public class PlayerController : NetworkBehaviour
             moveSpeed = 1000f;
         }
         //ledge climbing
-        else if(ledgeClimbing && !exitingWall)
+        else if(ledgeClimbing && !exitingWall && !crouching)
         {
             moveState = MovementState.LedgeClimbing;
             moveSpeed = ledgeClimbSpeed;
         }
         //climbing
-        else if (climbing && !climbStopping && !exitingWall)
+        else if (climbing && !climbStopping && !exitingWall && !crouching)
         {
             moveState = MovementState.Climbing;
             desiredMoveSpeed = climbSpeed;
         }
         //wall running
-        else if(enableWallRun && (wallLeft || wallRight) && verticalInput > 0 && IsAboveHeight(minJumpHeight) && CheckWallPeel() && !crouching)
+        else if(enableWallRun && (wallLeft || wallRight) && verticalInput > 0 && IsAboveHeight(minJumpHeight) && CheckWallPeel() && !crouching && !exitingWall && !climbStopping && !crouching)
         {
             if (!wallRunning)
             {
@@ -419,14 +614,14 @@ public class PlayerController : NetworkBehaviour
             moveState = MovementState.Air;
 
         //climbing
-        if (enableClimbing && wallFront && wallLookAngle < maxWallLookAngle && verticalInput > 0 && !exitingWall && !climbStopping)
+        if (enableClimbing && wallFront && wallLookAngle < maxWallLookAngle && verticalInput > 0 && !exitingWall && !climbStopping && !crouching)
         {
             if (!climbing && climbingTime > 0) StartClimbing();
 
             if (climbingTime > 0) climbingTime -= Time.deltaTime;
             if (climbingTime < 0) StopClimbing();
         }
-        else if (!climbStopping && climbing)
+        else if ((!climbStopping && climbing) || crouching)
         {
             StopClimbing();
         }
@@ -449,6 +644,7 @@ public class PlayerController : NetworkBehaviour
         if (enableLedgeGrab && ledgeGrabbed && climbing)
             StopClimbing();
 
+        //carrying momentum
         if (Mathf.Abs(desiredMoveSpeed - lastDesiredMoveSpeed) > 5f && desiredMoveSpeed < float.MaxValue && moveSpeed != 0)
         {
             StopAllCoroutines();
@@ -524,8 +720,15 @@ public class PlayerController : NetworkBehaviour
             ClimbMovement();
     }
 
+    private void Dash()
+    {
+        rb.AddForce(dashInput.normalized * dashSpeedMultiplier * 100f, ForceMode.Force);
+    }
+
     private void SpecialGravity()
     {
+        if (statusEffects.hovered) return;
+
         if (simulateGravity && gravityEnabled && !OnSlope() && !wallRunning)
         {
             if (!grounded && rb.velocity.y < downForceSpeedThreshold)
@@ -541,7 +744,9 @@ public class PlayerController : NetworkBehaviour
 
     private void SpeedControl()
     {
-        if (OnSlope() && !exitJump)
+        if (!speedLimitEnabled) return;
+
+        if ((OnSlope() || climbing || dashing) && !exitJump)
         {
             if (rb.velocity.magnitude > moveSpeed)
                 rb.velocity = rb.velocity.normalized * moveSpeed;
@@ -564,6 +769,9 @@ public class PlayerController : NetworkBehaviour
 
     public void Jump()
     {
+        if (crouching)
+            StopCrouch();
+
         exitJump = true;
 
         //reset y velocity
@@ -578,6 +786,8 @@ public class PlayerController : NetworkBehaviour
         float forwardValue = wallJumpForwardForce;
         if(Vector3.Dot(mainCamera.transform.forward, (wallRight) ? rightWallHit.normal : leftWallHit.normal) < 0f)
             forwardValue = 0f;
+
+        StopWallRun();
 
         rb.velocity = new(rb.velocity.x, 0f, rb.velocity.z);
         Vector3 force = transform.up * wallJumpUpForce + GetWallNormal() * wallJumpAwayForce + mainCamera.transform.forward * forwardValue;
@@ -629,7 +839,7 @@ public class PlayerController : NetworkBehaviour
 
     public void StartCrouch()
     {
-        transform.localScale = new(transform.localScale.x, crouchYScale, transform.localScale.z);
+        GetComponent<CapsuleCollider>().height = playerHeight * (2 / 3);
         if (grounded)
             rb.AddForce(Vector3.down * 10f, ForceMode.Impulse);
         crouching = true;
@@ -637,7 +847,7 @@ public class PlayerController : NetworkBehaviour
 
     public void StopCrouch()
     {
-        transform.localScale = new(transform.localScale.x, startYScale, transform.localScale.z);
+        GetComponent<CapsuleCollider>().height = playerHeight;
         crouching = false;
     }
 
@@ -652,7 +862,9 @@ public class PlayerController : NetworkBehaviour
 
     public bool OnSlope()
     {
-        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, playerHeight * 0.5f + 0.3f))
+        if (statusEffects.hovered) return false;
+
+        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, playerHeight * 0.5f + 0.3f, groundMask))
         {
             return GetSlopeAngle() < maxSlopeAngle && GetSlopeAngle() != 0;
         }
@@ -673,6 +885,21 @@ public class PlayerController : NetworkBehaviour
     #endregion
 
     #region Abilities
+
+    public void TakeControl(bool movement, bool gravity = true, bool drag = true, bool speedLimiter = true)
+    {
+        hasControl = false;
+        restrictMovement = !movement;
+        gravityEnabled = gravity;
+        dragEnabled = drag;
+        speedLimitEnabled = speedLimiter;
+    }
+
+    public void ReturnControl()
+    {
+        TakeControl(true, true, true, true);
+        hasControl = true;
+    }
 
     public void StartMovementAbility(float abilitySpeed = -1f, bool gradualDelta = false)
     {
@@ -716,6 +943,25 @@ public class PlayerController : NetworkBehaviour
             wallRight = false;
         if (wallLeft && Vector3.Dot(leftWallHit.normal, Vector3.up) > 0.01f)
             wallLeft = false;
+
+        if (wallRunExit && (wallRight || wallLeft))
+        {
+            bool newWallByAngle = Mathf.Abs(Vector3.Angle(lastWallRan.normal, ((wallRight) ? rightWallHit.normal : leftWallHit.normal))) >= minWallRunChangeAngle;
+
+            bool newWallByTransform = lastWallRan.collider.GetInstanceID() != ((wallRight) ? rightWallHit.collider.GetInstanceID() : leftWallHit.collider.GetInstanceID());
+
+            bool newWallToRun = newWallByAngle || newWallByTransform;
+
+            if (!newWallToRun)
+            {
+                wallRight = false;
+                wallLeft = false;
+            }
+            else
+            {
+                wallRunExit = false;
+            }
+        }
     }
 
     private bool IsAboveHeight(float height)
@@ -744,8 +990,20 @@ public class PlayerController : NetworkBehaviour
 
     private void BeginWallRun()
     {
+        if (statusEffects.hovered) return;
+
         if(!wallRunning)
             rb.velocity = Vector3.Project(rb.velocity, GetWallMovementVector(rb.velocity));
+    }
+
+    private void UpdateLastWallRan()
+    {
+        lastWallRan = (wallLeft) ? leftWallHit : rightWallHit;
+    }
+
+    private void StopWallRun()
+    {
+        wallRunExit = true;
     }
 
     #endregion
@@ -769,6 +1027,8 @@ public class PlayerController : NetworkBehaviour
 
     private void StartClimbing()
     {
+        if (statusEffects.hovered) return;
+
         climbing = true;
 
         lastWall = frontWallHit.transform;
@@ -809,6 +1069,55 @@ public class PlayerController : NetworkBehaviour
     private void ExitWallReset()
     {
         exitingWall = false;
+    }
+
+    #endregion
+
+    #region Dashing
+
+    public void StartDash()
+    {
+        OnDash.Invoke();
+
+        dashing = true;
+        canDash = false;
+        dashReset = false;
+        unlimitedSpeed = true;
+        moveSpeed = dashSpeed;
+
+        if (grounded)
+        {
+            dashInput = transform.right * horizontalInput + transform.forward * verticalInput;
+            dashInput.Normalize();
+
+            if (dashInput.magnitude == 0)
+                dashInput = transform.forward;
+        }
+        else
+            dashInput = mainCamera.transform.forward;
+
+        gravityEnabled = false;
+        rb.drag = 0;
+        rb.velocity = Vector3.zero;
+
+        Invoke(nameof(EndDash), dashDuration);
+    }
+
+    public void EndDash()
+    {
+        dashing = false;
+        rb.velocity = Vector3.zero;
+        rb.drag = GamePhysics.KineticFriction;
+        unlimitedSpeed = false;
+        gravityEnabled = true;
+
+        DashCooldownTime = 0f;
+        Invoke(nameof(ResetDash), dashCooldown);
+    }
+
+    public void ResetDash()
+    {
+        dashReset = true;
     }
 
     #endregion

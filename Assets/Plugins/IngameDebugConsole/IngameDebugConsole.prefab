@@ -98,7 +98,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &437128
 Transform:
   m_ObjectHideFlags: 0
@@ -782,8 +782,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   singleton: 1
   minimumHeight: 200
-  enableHorizontalResizing: 0
-  resizeFromRight: 1
+  enableHorizontalResizing: 1
+  resizeFromRight: 0
   minimumWidth: 240
   enablePopup: 1
   startInPopupMode: 1
