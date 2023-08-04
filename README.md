@@ -136,7 +136,7 @@ There is a window at the beginning of your block where if you are hit, you can p
 After the counter window has passed, you will continue to block and will take reduced damage.
 
 
-https://github.com/tidekiller237/NinjaGame/assets/42755734/e848187d-bda2-4dbb-80ea-b382042731da
+![BlockCounterDemo](https://github.com/tidekiller237/NinjaGame/assets/42755734/66e88889-ac5a-4e94-8991-0a8b2bf5c3c5)
 
 
 ## Ranged Combat
