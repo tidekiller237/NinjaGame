@@ -1,5 +1,5 @@
 # NinjaGame
-A multiplayer arena fps
+A multiplayer arena fps that is a personal project of mine
 
 This is a project inspired by games like Overwatch and Paladins. Though it does not have a proper title yet, it is meant to be a character based arena shooter. The combat will be focused on priarily projectiles and melee combat mixed with advanced movement that includes wall running, climbing, air jumping, and dashing.
 
